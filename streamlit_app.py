@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import datetime
 import time
+import re
 from io import BytesIO
 
 # ✅ Must be the first Streamlit command
@@ -62,14 +63,19 @@ def admin_dashboard():
             df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
             combined_df = pd.concat([df_int, df_dom], ignore_index=True)
             created = 0
+
             for i, row in combined_df.iterrows():
                 try:
+                    # Skip if flight number in column I is missing or doesn't match expected pattern
+                    if pd.isna(row[8]) or not re.match(r'^[A-Z]{2,3}\d{2,4}$', str(row[8]).strip()):
+                        continue
+
                     flight = str(row[8]).strip()  # Column I = index 8
                     aircraft = str(row[1]).strip()  # Column B = index 1
                     std_raw = str(row[10]).strip()  # Column K = index 10
 
-                    if not flight or not std_raw:
-                        raise ValueError("Missing flight or STD")
+                    if not std_raw:
+                        raise ValueError("Missing STD")
 
                     try:
                         std = pd.to_datetime(std_raw, errors='coerce')
@@ -88,6 +94,7 @@ def admin_dashboard():
                         created += 1
                 except Exception as e:
                     st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
+
             conn.commit()
             st.success(f"✅ {created} flight tasks created")
 
