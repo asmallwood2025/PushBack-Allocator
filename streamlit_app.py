@@ -1,173 +1,151 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
-import os
+import datetime
+from io import BytesIO
 
-# --- DB Setup ---
-conn = sqlite3.connect("flight_app.db", check_same_thread=False)
+# DB Setup
+conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-    username TEXT PRIMARY KEY,
-    active INTEGER DEFAULT 1
-)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS flights (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    flight_number TEXT,
-    aircraft_type TEXT,
-    std TEXT,
-    assigned_to TEXT,
-    complete INTEGER DEFAULT 0
-)''')
+c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, active INTEGER DEFAULT 1, pin TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, flight TEXT, aircraft TEXT, std TEXT, assigned_to TEXT, complete INTEGER DEFAULT 0)''')
 conn.commit()
 
-# --- Utility Functions ---
-def get_users():
-    return c.execute("SELECT username FROM users WHERE active=1").fetchall()
-
-def get_all_users():
-    return c.execute("SELECT username, active FROM users").fetchall()
-
-def add_user(username):
-    c.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (username,))
-    conn.commit()
-
-def toggle_user(username):
-    current = c.execute("SELECT active FROM users WHERE username=?", (username,)).fetchone()[0]
-    c.execute("UPDATE users SET active=? WHERE username=?", (0 if current else 1, username))
-    conn.commit()
-
-def insert_flight(flight_number, aircraft_type, std):
-    c.execute("INSERT INTO flights (flight_number, aircraft_type, std) VALUES (?, ?, ?)",
-              (flight_number, aircraft_type, std))
-    conn.commit()
-
-def get_flights(active_only=True):
-    query = "SELECT * FROM flights"
-    if active_only:
-        query += " WHERE complete=0"
-    query += " ORDER BY std"
-    return c.execute(query).fetchall()
-
-def assign_flight(flight_id, username):
-    c.execute("UPDATE flights SET assigned_to=? WHERE id=?", (username, flight_id))
-    conn.commit()
-
-def mark_complete(flight_id):
-    c.execute("UPDATE flights SET complete=1 WHERE id=?", (flight_id,))
-    conn.commit()
-
-def mark_incomplete(flight_id):
-    c.execute("UPDATE flights SET complete=0 WHERE id=?", (flight_id,))
-    conn.commit()
-
-def delete_flight(flight_id):
-    c.execute("DELETE FROM flights WHERE id=?", (flight_id,))
-    conn.commit()
-
-def delete_all_flights():
-    c.execute("DELETE FROM flights")
-    conn.commit()
-
-# --- UI ---
-st.set_page_config(page_title="Flight Allocation App", layout="centered")
-
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if not st.session_state.logged_in:
-    st.title("🔐 Enter Access Code")
-    pin = st.text_input("PIN", type="password")
+# Auth Functions
+def verify_pin(pin):
     if pin == "3320":
-        st.session_state.logged_in = True
-        st.experimental_rerun()
-    else:
-        st.stop()
+        return "admin"
+    c.execute("SELECT username FROM users WHERE pin = ? AND active = 1", (pin,))
+    row = c.fetchone()
+    return row[0] if row else None
 
-menu = st.sidebar.radio("", ["Users", "Flights", "History", "Logout"])
+# UI Functions
+def admin_dashboard():
+    st.title("👨‍✈️ Admin Dashboard")
+    tabs = st.tabs(["Users", "Flights", "History"])
 
-if menu == "Logout":
-    st.session_state.logged_in = False
-    st.experimental_rerun()
-
-elif menu == "Users":
-    st.header("👫 Manage Users")
-    new_user = st.text_input("New Username")
-    if st.button("Add User"):
-        if new_user:
-            add_user(new_user.strip().lower())
-    st.markdown("---")
-    for user, active in get_all_users():
-        cols = st.columns([2, 1, 1])
-        with cols[0]:
-            st.markdown(f"**{user}**")
-        with cols[1]:
-            st.markdown("✅ Active" if active else "❌ Inactive")
-        with cols[2]:
-            if st.button("Toggle", key=f"toggle_{user}"):
-                toggle_user(user)
-
-elif menu == "Flights":
-    st.header("🛫 Flight Tasks")
-    uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
-
-    if uploaded_file:
-        df_int = pd.read_excel(uploaded_file, sheet_name="INT")
-        df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
-
-        for df in [df_int, df_dom]:
-            for i, row in df.iterrows():
+    with tabs[0]:
+        st.header("👥 Manage Users")
+        new_user = st.text_input("New Username")
+        new_pin = st.text_input("4-digit PIN", type="password", max_chars=4)
+        if st.button("Add User"):
+            if len(new_pin) == 4 and new_user:
                 try:
-                    flight_number = str(row['I'])
-                    aircraft = str(row['B'])
-                    std = pd.to_datetime(row['K']).isoformat()
-                    if flight_number and aircraft and std:
-                        insert_flight(flight_number, aircraft, std)
-                except Exception:
-                    continue
+                    c.execute("INSERT INTO users (username, pin) VALUES (?, ?)", (new_user, new_pin))
+                    conn.commit()
+                    st.success("User added")
+                except:
+                    st.error("Username already exists")
+            else:
+                st.warning("Enter valid username and 4-digit PIN")
 
-        st.success("✅ Flights imported!")
-
-    if st.button("❌ Delete All Flight Tasks"):
-        delete_all_flights()
-        st.experimental_rerun()
-
-    flights = get_flights()
-    users = [u[0] for u in get_users()]
-
-    for flight in flights:
-        fid, number, aircraft, std, assigned, complete = flight
-        cols = st.columns([3, 2, 2, 2])
-        with cols[0]:
-            st.markdown(f"**{number}** Aircraft: {aircraft} STD: {std[:16]}")
-        with cols[1]:
-            user = st.selectbox("Assign to", users, index=users.index(assigned) if assigned in users else 0, key=f"assign_{fid}")
-        with cols[2]:
-            if st.button("Push Complete", key=f"complete_{fid}"):
-                assign_flight(fid, user)
-                mark_complete(fid)
-                st.experimental_rerun()
-        with cols[3]:
-            if st.button("Delete", key=f"delete_{fid}"):
-                delete_flight(fid)
+        for row in c.execute("SELECT username, active FROM users"):
+            col1, col2, col3 = st.columns([2, 1, 1])
+            col1.write(row[0])
+            col2.write("✅ Active" if row[1] else "❌ Inactive")
+            if col3.button("Toggle", key=f"toggle_{row[0]}"):
+                c.execute("UPDATE users SET active = 1 - active WHERE username = ?", (row[0],))
+                conn.commit()
                 st.experimental_rerun()
 
-elif menu == "History":
-    st.header("📜 Completed Flight History")
-    completed_flights = get_flights(active_only=False)
-    for flight in completed_flights:
-        fid, number, aircraft, std, assigned, complete = flight
-        if complete:
-            cols = st.columns([3, 2, 2])
-            with cols[0]:
-                st.markdown(f"**{number}** Aircraft: {aircraft} STD: {std[:16]} → {assigned}")
-            with cols[1]:
-                if st.button("Mark as Incomplete", key=f"undo_{fid}"):
-                    mark_incomplete(fid)
-                    st.experimental_rerun()
-            with cols[2]:
-                if st.button("Delete", key=f"hist_delete_{fid}"):
-                    delete_flight(fid)
-                    st.experimental_rerun()
+    with tabs[1]:
+        st.header("📄 Manage Flights")
+        uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
+
+        if uploaded_file:
+            df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
+            df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
+            combined_df = pd.concat([df_int, df_dom], ignore_index=True)
+            created = 0
+            for i, row in combined_df.iterrows():
+                try:
+                    flight = str(row[8]).strip()  # Column I = index 8
+                    aircraft = str(row[1]).strip()  # Column B = index 1
+                    std = pd.to_datetime(row[10])  # Column K = index 10
+                    if flight:
+                        c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
+                        created += 1
+                except Exception as e:
+                    st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
+            conn.commit()
+            st.success(f"✅ {created} flight tasks created")
+
+        st.subheader("🛫 Flight Tasks")
+        if st.button("❌ Delete All Tasks"):
+            c.execute("DELETE FROM tasks WHERE complete = 0")
+            conn.commit()
+            st.experimental_rerun()
+
+        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        users = [row[0] for row in c.execute("SELECT username FROM users WHERE active = 1").fetchall()]
+
+        for t in tasks:
+            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            cols = st.columns([2, 1, 1])
+            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
+            if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
+                conn.commit()
+                st.experimental_rerun()
+            if cols[2].button("Delete", key=f"delete_{t[0]}"):
+                c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
+                conn.commit()
+                st.experimental_rerun()
+            c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
+        conn.commit()
+
+    with tabs[2]:
+        st.header("📦 History")
+        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE complete = 1").fetchall()
+        for t in completed:
+            col1, col2 = st.columns([4, 1])
+            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 0 WHERE id = ?", (t[0],))
+                conn.commit()
+                st.experimental_rerun()
+
+def user_dashboard(username):
+    st.title(f"👋 Welcome {username}")
+    tabs = st.tabs(["Tasks", "History"])
+
+    with tabs[0]:
+        st.header("🛠️ Your Tasks")
+        tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (username,)).fetchall()
+        for t in tasks:
+            col1, col2 = st.columns([4, 1])
+            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            if col2.button("Complete", key=f"user_complete_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
+                conn.commit()
+                st.experimental_rerun()
+
+    with tabs[1]:
+        st.header("📦 Completed Tasks")
+        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY std", (username,)).fetchall()
+        for t in completed:
+            col1, col2 = st.columns([4, 1])
+            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            if col2.button("Reactivate", key=f"user_reactivate_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 0 WHERE id = ?", (t[0],))
+                conn.commit()
+                st.experimental_rerun()
+
+# App Entry
+st.set_page_config(page_title="Flight Task Manager", layout="centered")
+with st.sidebar:
+    st.markdown("## 🔐 Sign In")
+    pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
+    if st.button("Login") and pin:
+        user = verify_pin(pin)
+        if user:
+            st.session_state["user"] = user
+        else:
+            st.error("Invalid PIN")
+
+if "user" in st.session_state:
+    if st.session_state.user == "admin":
+        admin_dashboard()
+    else:
+        user_dashboard(st.session_state.user)
