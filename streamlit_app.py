@@ -62,30 +62,29 @@ def admin_dashboard():
             df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
             combined_df = pd.concat([df_int, df_dom], ignore_index=True)
             created = 0
-
             for i, row in combined_df.iterrows():
                 try:
-                    # Skip if flight number is missing or doesn't start with 'QF'
-                    if pd.isna(row[8]):
-                        continue
-
-                    flight = str(row[8]).strip()
+                    flight = str(row[8]).strip()  # Column I = index 8
                     if not flight.startswith("QF"):
-                        continue
+                        continue  # Only allow QF flights
 
                     aircraft = str(row[1]).strip()  # Column B = index 1
-                    std_raw = str(row[10]).strip()  # Column K = index 10
+                    std_raw = row[10]  # Column K = index 10
 
-                    if not std_raw:
-                        raise ValueError("Missing STD")
+                    if not flight or pd.isna(std_raw):
+                        raise ValueError("Missing flight or STD")
 
+                    # Parse STD safely, handling both string and Excel numeric formats
                     try:
-                        std = pd.to_datetime(std_raw, errors='coerce')
-                        if pd.isna(std):
-                            std = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
-                        if pd.isna(std):
-                            raise ValueError(f"Unrecognized time format: {std_raw}")
-                        std = std.strftime("%H:%M")  # only time
+                        if isinstance(std_raw, (int, float)):
+                            std_time = pd.to_datetime('1899-12-30') + pd.to_timedelta(std_raw, unit='D')
+                        else:
+                            std_time = pd.to_datetime(std_raw, errors='coerce')
+                            if pd.isna(std_time):
+                                std_time = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
+                            if pd.isna(std_time):
+                                raise ValueError(f"Unrecognized time format: {std_raw}")
+                        std = std_time.strftime("%H:%M")
                     except Exception as inner_e:
                         raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
