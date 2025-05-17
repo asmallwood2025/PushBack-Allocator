@@ -3,14 +3,14 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
-# Database setup
-conn = sqlite3.connect('task_allocation.db')
+# Persistent DB connection
+conn = sqlite3.connect('task_allocation.db', check_same_thread=False)
 c = conn.cursor()
 
 # Create necessary tables
 c.execute("""CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY, 
-                name TEXT, 
+                name TEXT UNIQUE, 
                 passcode INTEGER,
                 active INTEGER DEFAULT 1)""")
 
@@ -25,76 +25,60 @@ conn.commit()
 
 # Helper functions
 def get_users():
-    with sqlite3.connect('task_allocation.db') as conn:
-        return conn.execute("SELECT id, name, passcode, active FROM users").fetchall()
+    return c.execute("SELECT id, name, passcode, active FROM users").fetchall()
 
 def get_flights():
-    with sqlite3.connect('task_allocation.db') as conn:
-        return conn.execute("SELECT * FROM flights ORDER BY std").fetchall()
+    return c.execute("SELECT * FROM flights ORDER BY std").fetchall()
 
 def flight_exists(flight_number, std):
-    with sqlite3.connect('task_allocation.db') as conn:
-        result = conn.execute("SELECT 1 FROM flights WHERE flight_number=? AND std=?", (flight_number, std)).fetchone()
-        return result is not None
+    result = c.execute("SELECT 1 FROM flights WHERE flight_number=? AND std=?", (flight_number, std)).fetchone()
+    return result is not None
 
 def add_user(name, passcode):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("INSERT INTO users (name, passcode, active) VALUES (?, ?, 1)", (name, passcode))
-        conn.commit()
+    c.execute("INSERT INTO users (name, passcode, active) VALUES (?, ?, 1)", (name, passcode))
+    conn.commit()
 
 def update_user(user_id, name, passcode):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE users SET name=?, passcode=? WHERE id=?", (name, passcode, user_id))
-        conn.commit()
+    c.execute("UPDATE users SET name=?, passcode=? WHERE id=?", (name, passcode, user_id))
+    conn.commit()
 
 def toggle_user_active(user_id, current_status):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE users SET active=? WHERE id=?", (0 if current_status else 1, user_id))
-        conn.commit()
+    c.execute("UPDATE users SET active=? WHERE id=?", (0 if current_status else 1, user_id))
+    conn.commit()
 
 def delete_user(user_id):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
-        conn.commit()
+    c.execute("DELETE FROM users WHERE id=?", (user_id,))
+    conn.commit()
 
 def add_flight(flight_number, aircraft, std):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("INSERT INTO flights (flight_number, aircraft, std, status) VALUES (?, ?, ?, 'unallocated')",
-                     (flight_number, aircraft, std))
-        conn.commit()
+    c.execute("INSERT INTO flights (flight_number, aircraft, std, status) VALUES (?, ?, ?, 'unallocated')",
+              (flight_number, aircraft, std))
+    conn.commit()
 
 def allocate_flight(flight_id, user):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE flights SET assigned_to=?, status='allocated' WHERE id=?", (user, flight_id))
-        conn.commit()
+    c.execute("UPDATE flights SET assigned_to=?, status='allocated' WHERE id=?", (user, flight_id))
+    conn.commit()
 
 def mark_complete(flight_id):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE flights SET status='completed' WHERE id=?", (flight_id,))
-        conn.commit()
+    c.execute("UPDATE flights SET status='completed' WHERE id=?", (flight_id,))
+    conn.commit()
 
 def mark_incomplete(flight_id):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE flights SET status='allocated' WHERE id=?", (flight_id,))
-        conn.commit()
+    c.execute("UPDATE flights SET status='allocated' WHERE id=?", (flight_id,))
+    conn.commit()
 
 def update_std(flight_id, new_std):
-    with sqlite3.connect('task_allocation.db') as conn:
-        conn.execute("UPDATE flights SET std=? WHERE id=?", (new_std, flight_id))
-        conn.commit()
+    c.execute("UPDATE flights SET std=? WHERE id=?", (new_std, flight_id))
+    conn.commit()
 
 def authenticate_user(passcode):
-    with sqlite3.connect('task_allocation.db') as conn:
-        result = conn.execute("SELECT name FROM users WHERE passcode=? AND active=1", (passcode,)).fetchone()
+    result = c.execute("SELECT name FROM users WHERE passcode=? AND active=1", (passcode,)).fetchone()
     return result
 
-# Session state initialization
-if "user_type" not in st.session_state:
-    st.session_state.user_type = None
-if "username" not in st.session_state:
-    st.session_state.username = ""
-if "passcode_entered" not in st.session_state:
-    st.session_state.passcode_entered = ""
+# Session state
+for key in ["user_type", "username", "passcode_entered"]:
+    if key not in st.session_state:
+        st.session_state[key] = "" if key == "username" else None if key == "user_type" else ""
 
 # Login Page
 if st.session_state.user_type is None:
@@ -134,8 +118,9 @@ if st.session_state.user_type is None:
 # Admin Dashboard
 elif st.session_state.user_type == "admin":
     st.title("🛠 Admin Dashboard")
+    st.button("🚪 Logout", on_click=lambda: [st.session_state.update(user_type=None, passcode_entered="", username=""), st.rerun()])
 
-    tab1, tab2, tab3 = st.tabs(["Users", "Flights", "Logout"])
+    tab1, tab2 = st.tabs(["Users", "Flights"])
 
     with tab1:
         st.header("👥 Manage Users")
@@ -146,32 +131,32 @@ elif st.session_state.user_type == "admin":
                 new_code = st.text_input("Edit Passcode", value=str(user[2]), key=f"code_{user[0]}")
                 col1, col2, col3 = st.columns(3)
                 if col1.button("Update", key=f"update_{user[0]}"):
-                    update_user(user[0], new_name, int(new_code))
-                    st.success("User updated")
-                    st.rerun()
+                    if new_code.isdigit() and len(new_code) == 4:
+                        update_user(user[0], new_name, int(new_code))
+                        st.success("User updated")
+                        st.rerun()
+                    else:
+                        st.error("Passcode must be 4 digits")
                 if col2.button("Toggle Active", key=f"toggle_{user[0]}"):
                     toggle_user_active(user[0], user[3])
-                    st.success("User status updated")
                     st.rerun()
                 if col3.button("Delete", key=f"delete_{user[0]}"):
                     delete_user(user[0])
-                    st.success("User deleted")
                     st.rerun()
 
         st.subheader("➕ Add New User")
         name = st.text_input("New Username")
         passcode = st.text_input("New Passcode", type="password")
         if st.button("Add User"):
-            if name and passcode.isdigit():
+            if name and passcode.isdigit() and len(passcode) == 4:
                 add_user(name, int(passcode))
                 st.success("User added")
                 st.rerun()
             else:
-                st.error("Enter valid name and numeric passcode")
+                st.error("Enter valid name and 4-digit numeric passcode")
 
     with tab2:
         st.header("📋 Manage Flights")
-
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type="xlsx")
         if uploaded_file:
             try:
@@ -182,8 +167,10 @@ elif st.session_state.user_type == "admin":
                     flight = str(row.iloc[8])
                     aircraft = str(row.iloc[9])
                     std = pd.to_datetime(row.iloc[10], errors='coerce')
-                    if pd.notna(std) and not flight_exists(flight, std.isoformat()):
-                        add_flight(flight, aircraft, std.isoformat())
+                    if pd.notna(std):
+                        std_str = std.strftime("%Y-%m-%dT%H:%M:%S")
+                        if not flight_exists(flight, std_str):
+                            add_flight(flight, aircraft, std_str)
             except Exception as e:
                 st.error(f"Error processing file: {e}")
 
@@ -198,28 +185,26 @@ elif st.session_state.user_type == "admin":
         for flight in flights:
             with st.expander(f"{flight[1]} — STD: {flight[3]} — A/C: {flight[2]} — Status: {flight[4]}"):
                 user_list = [u[1] for u in get_users() if u[3] == 1]
-                selected_user = st.selectbox("Assign to", user_list, index=0 if user_list else None, key=f"assign_{flight[0]}")
+                if user_list:
+                    selected_user = st.selectbox("Assign to", user_list, key=f"assign_{flight[0]}")
+                else:
+                    st.warning("No active users available to assign.")
+                    selected_user = None
+
                 new_std = st.datetime_input("Reschedule STD", value=pd.to_datetime(flight[3]), key=f"std_{flight[0]}")
                 col1, col2 = st.columns(2)
-                if col1.button("Assign", key=f"assign_btn_{flight[0]}"):
+                if selected_user and col1.button("Assign", key=f"assign_btn_{flight[0]}"):
                     allocate_flight(flight[0], selected_user)
-                    st.success(f"Assigned to {selected_user}")
                     st.rerun()
                 if col2.button("Update STD", key=f"update_std_btn_{flight[0]}"):
-                    update_std(flight[0], new_std.isoformat())
-                    st.success("STD updated")
+                    update_std(flight[0], new_std.strftime("%Y-%m-%dT%H:%M:%S"))
                     st.rerun()
-
-    with tab3:
-        if st.button("Logout"):
-            st.session_state.user_type = None
-            st.session_state.passcode_entered = ""
-            st.session_state.username = ""
-            st.rerun()
 
 # User Dashboard
 elif st.session_state.user_type == "user":
     st.title(f"👤 {st.session_state.username}'s Dashboard")
+    st.button("🚪 Logout", on_click=lambda: [st.session_state.update(user_type=None, passcode_entered="", username=""), st.rerun()])
+
     flights = get_flights()
     my_flights = [f for f in flights if f[5] == st.session_state.username]
     status_emoji = {"unallocated": "🔴", "allocated": "🟡", "completed": "🟢"}
@@ -230,16 +215,8 @@ elif st.session_state.user_type == "user":
             if flight[4] == "allocated":
                 if st.button("Mark as Complete", key=f"complete_{flight[0]}"):
                     mark_complete(flight[0])
-                    st.success("Task marked complete")
                     st.rerun()
             elif flight[4] == "completed":
                 if st.button("Mark as Incomplete", key=f"incomplete_{flight[0]}"):
                     mark_incomplete(flight[0])
-                    st.success("Task marked incomplete")
                     st.rerun()
-
-    if st.button("Logout"):
-        st.session_state.user_type = None
-        st.session_state.username = ""
-        st.session_state.passcode_entered = ""
-        st.rerun()
