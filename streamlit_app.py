@@ -85,28 +85,40 @@ def read_flights_from_excel(uploaded_file):
     return flights
 
 # UI starts here
+st.set_page_config(page_title="Flight Task Management", layout="centered")
 st.title("Flight Task Management")
 
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.username = None
+    st.session_state.pin_code = ""
 
 if not st.session_state.authenticated:
-    st.subheader("Enter your PIN")
-    cols = st.columns([1, 1, 1])
-    pin_input = ""
-    for i in range(3):
-        with cols[i]:
-            for j in range(1, 4):
-                if st.button(str(3 * i + j)):
-                    st.session_state.pin_code = st.session_state.get("pin_code", "") + str(3 * i + j)
-    with cols[1]:
-        if st.button("0"):
-            st.session_state.pin_code = st.session_state.get("pin_code", "") + "0"
-    if st.button("Clear"):
-        st.session_state.pin_code = ""
-    if st.button("Enter"):
-        pin_code = st.session_state.get("pin_code", "")
+    st.subheader("Enter PIN Number")
+
+    col_input = st.empty()
+    col_input.text_input("", value=st.session_state.pin_code, disabled=True, label_visibility="collapsed")
+
+    pin_layout = [
+        ["7", "8", "9"],
+        ["4", "5", "6"],
+        ["1", "2", "3"],
+        ["CLR", "0", "DEL"]
+    ]
+
+    for row in pin_layout:
+        cols = st.columns(3)
+        for i, key in enumerate(row):
+            if cols[i].button(key, use_container_width=True):
+                if key == "CLR":
+                    st.session_state.pin_code = ""
+                elif key == "DEL":
+                    st.session_state.pin_code = st.session_state.pin_code[:-1]
+                else:
+                    st.session_state.pin_code += key
+
+    if len(st.session_state.pin_code) >= 4:
+        pin_code = st.session_state.pin_code
         if pin_code == "3320":
             st.session_state.authenticated = True
             st.session_state.username = "admin"
@@ -117,7 +129,8 @@ if not st.session_state.authenticated:
                 st.session_state.username = user_df.iloc[0]['username']
             else:
                 st.error("Invalid PIN code.")
-    st.write(f"Entered PIN: {st.session_state.get('pin_code', '')}")
+                st.session_state.pin_code = ""
+
     st.stop()
 
 if st.button("Log Out"):
@@ -188,3 +201,4 @@ else:
                 if st.button("Mark as Complete", key=f"user_complete_{row['id']}"):
                     update_task_status(row['id'], "Complete")
                     st.success("Task marked complete")
+
