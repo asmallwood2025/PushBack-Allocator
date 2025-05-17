@@ -68,6 +68,8 @@ def get_user_by_passcode(passcode):
 
 # ---------- STREAMLIT INTERFACE ----------
 st.set_page_config(page_title="Flight Allocator", layout="centered")
+
+# Add the missing triple-quote closure
 st.markdown(
     """
     <style>
@@ -89,4 +91,34 @@ st.markdown(
         font-size: 20px;
     }
     .stSelectbox {
-        font-size: 20
+        font-size: 20px;
+    }
+    .landing-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        text-align: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ---------- USER REGISTRATION FOR THE FIRST TIME ----------
+# Predefined Users for Admin
+predefined_users = {
+    "3320": "Admin",
+    "0001": "Adam",
+    "0002": "Tadj",
+    "0003": "Darren",
+}
+
+# ---------- LANDING PAGE - PASSCODE ENTRY ----------
+if 'passcode_entered' not in st.session_state:
+    st.session_state.passcode_entered = ""
+
+def handle_button_click(num):
+    if len(st.session_state.passcode_entered) < 4:
+        st.session_state.passcode_entered += str(num)
+        if len(st.session_state.passcode_entered) == 4:
