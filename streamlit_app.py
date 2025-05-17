@@ -30,13 +30,23 @@ def load_schedule(file):
     for sheet in ['DOM', 'INT']:
         if sheet in xls.sheet_names:
             df = xls.parse(sheet)
+
+            st.write(f"Columns in {sheet} sheet:", df.columns.tolist())
+
+            required_cols = ['Flight Number', 'A/C', 'STD']
+            if not all(col in df.columns for col in required_cols):
+                st.warning(f"Skipping sheet '{sheet}': Missing one of {required_cols}")
+                continue
+
             for _, row in df.iterrows():
                 try:
-                    flight = row['I']
-                    ac = row['A/C']
-                    std = pd.to_datetime(row['STD']).strftime('%Y-%m-%d %H:%M')
+                    flight = str(row['Flight Number'])
+                    ac = str(row['A/C'])
+                    std_raw = row['STD']
+                    std = pd.to_datetime(std_raw).strftime('%Y-%m-%d %H:%M')
                     flights.append((flight, ac, std))
-                except:
+                except Exception as e:
+                    st.warning(f"Skipping row due to error: {e}")
                     continue
     return flights
 
@@ -99,7 +109,8 @@ def login_page():
     pin = st.session_state.get('pin', '')
 
     def handle_digit(d):
-        st.session_state.pin = st.session_state.get('pin', '') + d
+        if len(st.session_state.pin) < 4:
+            st.session_state.pin += d
 
     def clear_pin():
         st.session_state.pin = ''
@@ -110,14 +121,11 @@ def login_page():
     for i in range(1, 10):
         if cols[(i - 1) % 3].button(str(i), key=f"btn_{i}"):
             handle_digit(str(i))
-            st.rerun()
 
     if cols[0].button("Clear"):
         clear_pin()
-        st.rerun()
     if cols[1].button("0", key="btn_0"):
         handle_digit("0")
-        st.rerun()
 
     if len(pin) == 4:
         if pin == '3320':
@@ -126,7 +134,6 @@ def login_page():
         else:
             st.error("Incorrect PIN. Try again.")
             clear_pin()
-            st.rerun()
 
 # --- Admin Dashboard ---
 def admin_dashboard():
