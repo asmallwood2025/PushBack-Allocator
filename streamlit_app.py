@@ -8,7 +8,14 @@ from io import BytesIO
 conn = sqlite3.connect("flights.db", check_same_thread=False)
 c = conn.cursor()
 
-# Create tables
+# Drop and recreate users table for clean schema
+c.execute("DROP TABLE IF EXISTS users")
+c.execute('''CREATE TABLE users (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             username TEXT UNIQUE,
+             pin TEXT UNIQUE)''')
+
+# Create other tables
 c.execute('''CREATE TABLE IF NOT EXISTS flight_tasks (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              flight_number TEXT,
@@ -16,18 +23,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS flight_tasks (
              std TEXT,
              status TEXT DEFAULT 'Incomplete',
              assigned_to TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             username TEXT UNIQUE,
-             pin TEXT UNIQUE)''')
-
-# Ensure 'pin' column exists (migration logic)
-try:
-    c.execute("ALTER TABLE users ADD COLUMN pin TEXT UNIQUE")
-    conn.commit()
-except sqlite3.OperationalError:
-    pass  # Column already exists
 
 conn.commit()
 
@@ -115,25 +110,28 @@ if not st.session_state.authenticated:
                 elif key == "DEL":
                     st.session_state.pin_code = st.session_state.pin_code[:-1]
                 else:
-                    st.session_state.pin_code += key
+                    if len(st.session_state.pin_code) < 4:
+                        st.session_state.pin_code += key
 
-    if len(st.session_state.pin_code) >= 4:
-        pin_code = st.session_state.pin_code
-        if pin_code == "3320":
-            st.session_state.authenticated = True
-            st.session_state.username = "admin"
-        else:
-            try:
-                user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
-                if not user_df.empty:
-                    st.session_state.authenticated = True
-                    st.session_state.username = user_df.iloc[0]['username']
-                else:
-                    st.warning("Invalid PIN. Please try again.")
-                    st.session_state.pin_code = ""
-            except Exception as e:
-                st.error("Login error occurred. Please try again.")
-                st.session_state.pin_code = ""
+                if len(st.session_state.pin_code) == 4:
+                    pin_code = st.session_state.pin_code
+                    if pin_code == "3320":
+                        st.session_state.authenticated = True
+                        st.session_state.username = "admin"
+                        st.rerun()
+                    else:
+                        try:
+                            user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
+                            if not user_df.empty:
+                                st.session_state.authenticated = True
+                                st.session_state.username = user_df.iloc[0]['username']
+                                st.rerun()
+                            else:
+                                st.warning("Invalid PIN. Please try again.")
+                                st.session_state.pin_code = ""
+                        except Exception as e:
+                            st.error("Login error occurred. Please try again.")
+                            st.session_state.pin_code = ""
 
     st.stop()
 
