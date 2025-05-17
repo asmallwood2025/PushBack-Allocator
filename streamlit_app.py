@@ -123,12 +123,16 @@ if not st.session_state.authenticated:
             st.session_state.authenticated = True
             st.session_state.username = "admin"
         else:
-            user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
-            if not user_df.empty:
-                st.session_state.authenticated = True
-                st.session_state.username = user_df.iloc[0]['username']
-            else:
-                st.error("Invalid PIN code.")
+            try:
+                user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
+                if not user_df.empty:
+                    st.session_state.authenticated = True
+                    st.session_state.username = user_df.iloc[0]['username']
+                else:
+                    st.warning("Invalid PIN. Please try again.")
+                    st.session_state.pin_code = ""
+            except Exception as e:
+                st.error("Login error occurred. Please try again.")
                 st.session_state.pin_code = ""
 
     st.stop()
@@ -201,4 +205,3 @@ else:
                 if st.button("Mark as Complete", key=f"user_complete_{row['id']}"):
                     update_task_status(row['id'], "Complete")
                     st.success("Task marked complete")
-
