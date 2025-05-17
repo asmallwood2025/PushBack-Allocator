@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import random
-import string
 
 # ---------- DATABASE SETUP ----------
 def create_db():
@@ -69,21 +67,35 @@ def get_user_by_passcode(passcode):
     return user
 
 # ---------- STREAMLIT INTERFACE ----------
-st.set_page_config(page_title="Flight Allocator", layout="wide")
+st.set_page_config(page_title="Flight Allocator", layout="centered")
 st.markdown(
     """
     <style>
     .stButton > button {
         border-radius: 50%;
-        width: 60px;
-        height: 60px;
-        font-size: 20px;
+        width: 80px;
+        height: 80px;
+        font-size: 30px;
         background-color: red !important;
         color: white !important;
-        margin: 5px;
+        margin: 10px;
     }
     .stTextInput > div > input {
         font-size: 24px;
+        text-align: center;
+    }
+    .stTextInput {
+        text-align: center;
+        font-size: 20px;
+    }
+    .stSelectbox {
+        font-size: 20px;
+    }
+    .landing-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
         text-align: center;
     }
     </style>
@@ -110,29 +122,42 @@ def handle_button_click(num):
         if len(st.session_state.passcode_entered) == 4:
             st.experimental_rerun()
 
-cols = st.columns(3)
-for i in range(1, 10):
-    col = cols[(i-1) % 3]
-    with col:
-        st.button(str(i), key=f"btn{i}", on_click=handle_button_click, args=(i,))
-
-st.text_input("Entered Passcode", value=st.session_state.passcode_entered, disabled=True)
-
-# If 4 digit passcode entered, check user
-if len(st.session_state.passcode_entered) == 4:
-    user_passcode = st.session_state.passcode_entered
-    user = predefined_users.get(user_passcode)
-
-    if user_passcode == "3320":
-        st.session_state.user_type = "admin"
-        st.experimental_rerun()
-    elif user:
-        st.session_state.user_type = "user"
-        st.session_state.username = user
-        st.experimental_rerun()
-    else:
-        st.session_state.passcode_entered = ""
-        st.error("❌ Invalid passcode. Please try again.")
+# Center the login page and keypad
+with st.container():
+    st.markdown('<div class="landing-container">', unsafe_allow_html=True)
+    
+    # Display passcode input with grid layout for numbers 0-9
+    keypad_layout = [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+        [0]
+    ]
+    
+    cols = st.columns(3)
+    for i, row in enumerate(keypad_layout):
+        with cols[i % 3]:  # Wrap each row with columns
+            for num in row:
+                st.button(str(num), key=f"btn{num}", on_click=handle_button_click, args=(num,))
+    
+    st.text_input("Entered Passcode", value=st.session_state.passcode_entered, disabled=True)
+    
+    if len(st.session_state.passcode_entered) == 4:
+        user_passcode = st.session_state.passcode_entered
+        user = predefined_users.get(user_passcode)
+        
+        if user_passcode == "3320":
+            st.session_state.user_type = "admin"
+            st.experimental_rerun()
+        elif user:
+            st.session_state.user_type = "user"
+            st.session_state.username = user
+            st.experimental_rerun()
+        else:
+            st.session_state.passcode_entered = ""
+            st.error("❌ Invalid passcode. Please try again.")
+            
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------- ADMIN INTERFACE ----------
 if st.session_state.get('user_type') == 'admin':
@@ -166,54 +191,6 @@ if st.session_state.get('user_type') == 'admin':
     new_user_passcode = st.text_input("User Passcode", type="password")
     
     if new_user_name and new_user_passcode:
-        if st.button("Add User"):
-            try:
-                add_user(new_user_name, new_user_passcode)
-                st.success(f"✅ User {new_user_name} added successfully.")
-            except Exception as e:
-                st.error(f"❌ Error adding user: {e}")
-    
-    st.markdown("### Allocate Flights")
-    flights = get_flights()
-    unallocated = [f for f in flights if f[3] is None]
+        if st.button("Add User
 
-    if unallocated:
-        flight_selection = st.selectbox('Select flight to allocate:', [f"{f[1]} (ID: {f[0]})" for f in unallocated])
-        users = get_users()
-        user_selection = st.selectbox('Select user to assign:', [f"{u[1]} (Passcode: {u[2]})" for u in users])
-        
-        if st.button("Allocate Flight"):
-            flight_id = int(flight_selection.split("ID: ")[1].replace(")", ""))
-            user_id = int(user_selection.split(" (")[0])
-            allocate_flight(flight_id, user_id)
-            st.success("✅ Flight allocated.")
-            st.experimental_rerun()
-
-    st.markdown("### Update Flight Status")
-    all_flights = get_flights()
-
-    if all_flights:
-        flight_update = st.selectbox("Choose a flight", [f"{f[1]} (ID: {f[0]}, Status: {f[2]})" for f in all_flights])
-        new_status = st.selectbox("New status", ['unallocated', 'allocated', 'completed', 'delayed'])
-        if st.button("Update Status"):
-            flight_id = int(flight_update.split("ID: ")[1].split(",")[0])
-            update_flight_status(flight_id, new_status)
-            st.success("✅ Flight status updated.")
-            st.experimental_rerun()
-    else:
-        st.info("No flights found.")
-
-# ---------- USER INTERFACE ----------
-elif st.session_state.get('user_type') == 'user':
-    st.title(f"Welcome {st.session_state.username}")
-    st.subheader(f"Hello, {st.session_state.username}, here are your allocated flights.")
-
-    flights = get_flights()
-    user_flights = [f for f in flights if f[3] == st.session_state.username]
-
-    if user_flights:
-        st.markdown("### ✈️ Your Allocated Flights")
-        for f in user_flights:
-            st.write(f"- {f[1]} — Status: **{f[2]}**")
-    else:
-        st.info("No flights allocated to you yet.")
+                    
