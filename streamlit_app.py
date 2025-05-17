@@ -96,9 +96,14 @@ st.markdown(
     .landing-container {
         display: flex;
         justify-content: center;
-        align-items: center;
+        align-items: flex-start;
         height: 100vh;
         text-align: center;
+        margin-top: 10%;
+    }
+    .pin-container {
+        display: flex;
+        justify-content: center;
     }
     </style>
     """,
@@ -123,6 +128,12 @@ def handle_button_click(num):
         st.session_state.passcode_entered += str(num)
         if len(st.session_state.passcode_entered) == 4:
             st.experimental_rerun()
+
+def logout():
+    st.session_state.passcode_entered = ""
+    st.session_state.user_type = None
+    st.session_state.username = None
+    st.experimental_rerun()
 
 # Center the login page and keypad
 with st.container():
@@ -158,7 +169,7 @@ with st.container():
         else:
             st.session_state.passcode_entered = ""
             st.error("❌ Invalid passcode. Please try again.")
-            
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------- ADMIN INTERFACE ----------
@@ -229,6 +240,10 @@ if st.session_state.get('user_type') == 'admin':
             st.experimental_rerun()
     else:
         st.info("No flights found.")
+    
+    # Log out button
+    if st.button('Log out'):
+        logout()
 
 # ---------- USER INTERFACE ----------
 elif st.session_state.get('user_type') == 'user':
@@ -244,3 +259,7 @@ elif st.session_state.get('user_type') == 'user':
             st.write(f"- {f[1]} — Status: {f[2]}")
     else:
         st.info("No allocated flights.")
+    
+    # Log out button
+    if st.button('Log out'):
+        logout()
