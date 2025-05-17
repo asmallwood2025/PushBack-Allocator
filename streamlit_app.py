@@ -256,4 +256,3 @@ elif st.session_state.get('user_type') == 'user':
     
     if st.button('Log out'):
         logout()
-
