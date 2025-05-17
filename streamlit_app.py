@@ -66,7 +66,7 @@ def admin_dashboard():
                 try:
                     flight = str(row[8]).strip()  # Column I = index 8
                     if not flight.startswith("QF"):
-                        continue  # Only allow QF flights
+                        continue
 
                     aircraft = str(row[1]).strip()  # Column B = index 1
                     std_raw = row[10]  # Column K = index 10
@@ -74,17 +74,21 @@ def admin_dashboard():
                     if not flight or pd.isna(std_raw):
                         raise ValueError("Missing flight or STD")
 
-                    # Parse STD safely, handling both string and Excel numeric formats
                     try:
                         if isinstance(std_raw, (int, float)):
-                            std_time = pd.to_datetime('1899-12-30') + pd.to_timedelta(std_raw, unit='D')
+                            total_seconds = int(std_raw * 24 * 60 * 60)
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            std = f"{hours:02d}:{minutes:02d}"
+                        elif isinstance(std_raw, str):
+                            parsed = pd.to_datetime(std_raw, errors='coerce')
+                            if pd.isna(parsed):
+                                parsed = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
+                            if pd.isna(parsed):
+                                raise ValueError(f"Unrecognized string format for STD: {std_raw}")
+                            std = parsed.strftime("%H:%M")
                         else:
-                            std_time = pd.to_datetime(std_raw, errors='coerce')
-                            if pd.isna(std_time):
-                                std_time = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
-                            if pd.isna(std_time):
-                                raise ValueError(f"Unrecognized time format: {std_raw}")
-                        std = std_time.strftime("%H:%M")
+                            raise ValueError(f"Unsupported STD type: {type(std_raw)}")
                     except Exception as inner_e:
                         raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
