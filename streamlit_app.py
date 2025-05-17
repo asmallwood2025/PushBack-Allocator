@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import datetime
+import time
 from io import BytesIO
 
 # DB Setup
@@ -9,14 +10,7 @@ conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
 c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, active INTEGER DEFAULT 1, pin TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    flight TEXT,
-    aircraft TEXT,
-    std TEXT,
-    assigned_to TEXT,
-    complete INTEGER DEFAULT 0
-)''')
+c.execute('''CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, flight TEXT, aircraft TEXT, std TEXT, assigned_to TEXT, complete INTEGER DEFAULT 0)''')
 conn.commit()
 
 # Auth Functions
@@ -30,6 +24,10 @@ def verify_pin(pin):
 # UI Functions
 def admin_dashboard():
     st.title("👨‍✈️ Admin Dashboard")
+    if st.button("🔄 Logout"):
+        del st.session_state["user"]
+        st.rerun()
+
     tabs = st.tabs(["Users", "Flights", "History"])
 
     with tabs[0]:
@@ -84,7 +82,7 @@ def admin_dashboard():
                     except Exception as inner_e:
                         raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
-                    # Check for duplicates
+                    # Prevent duplicate flight imports
                     existing = c.execute("SELECT 1 FROM tasks WHERE flight = ? AND std = ?", (flight, std)).fetchone()
                     if not existing:
                         c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
@@ -100,12 +98,12 @@ def admin_dashboard():
             conn.commit()
             st.rerun()
 
-        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY time(std)").fetchall()
         users = [row[0] for row in c.execute("SELECT username FROM users WHERE active = 1").fetchall()]
 
         for t in tasks:
             st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-            cols = st.columns([2, 1, 1])
+            cols = st.columns([2, 1, 1, 1])
             assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
             if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
@@ -115,6 +113,17 @@ def admin_dashboard():
                 c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
+            if cols[3].button("✏️ Reschedule", key=f"resched_{t[0]}"):
+                new_std = st.text_input(f"New STD (HH:MM) for {t[1]}", key=f"new_std_{t[0]}")
+                if new_std:
+                    try:
+                        pd.to_datetime(new_std, format="%H:%M")
+                        c.execute("UPDATE tasks SET std = ? WHERE id = ?", (new_std, t[0]))
+                        conn.commit()
+                        st.success("STD updated")
+                        st.rerun()
+                    except:
+                        st.error("Invalid time format. Use HH:MM.")
             c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
         conn.commit()
 
@@ -130,30 +139,42 @@ def admin_dashboard():
                 st.rerun()
 
 def user_dashboard(username):
-    st.title(f"👋 Welcome {username}")
-    tabs = st.tabs(["Tasks", "History"])
+    st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
-    with tabs[0]:
-        st.header("🛠️ Your Tasks")
-        tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (username,)).fetchall()
-        for t in tasks:
-            col1, col2 = st.columns([4, 1])
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-            if col2.button("Complete", key=f"user_complete_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
-                conn.commit()
+    placeholder = st.empty()
+    while True:
+        with placeholder.container():
+            st.title(f"👋 Welcome {username}")
+            if st.button("🔄 Logout"):
+                del st.session_state["user"]
                 st.rerun()
 
-    with tabs[1]:
-        st.header("📦 Completed Tasks")
-        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY std", (username,)).fetchall()
-        for t in completed:
-            col1, col2 = st.columns([4, 1])
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-            if col2.button("Reactivate", key=f"user_reactivate_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 0 WHERE id = ?", (t[0],))
-                conn.commit()
-                st.rerun()
+            tabs = st.tabs(["Tasks", "History"])
+
+            with tabs[0]:
+                st.header("🛠️ Your Tasks")
+                tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY time(std)", (username,)).fetchall()
+                for t in tasks:
+                    col1, col2 = st.columns([4, 1])
+                    col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+                    if col2.button("Complete", key=f"user_complete_{t[0]}"):
+                        c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
+                        conn.commit()
+                        st.rerun()
+
+            with tabs[1]:
+                st.header("📦 Completed Tasks")
+                completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY time(std)", (username,)).fetchall()
+                for t in completed:
+                    col1, col2 = st.columns([4, 1])
+                    col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+                    if col2.button("Reactivate", key=f"user_reactivate_{t[0]}"):
+                        c.execute("UPDATE tasks SET complete = 0 WHERE id = ?", (t[0],))
+                        conn.commit()
+                        st.rerun()
+
+        time.sleep(5)
+        st.rerun()
 
 # App Entry
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
@@ -164,12 +185,9 @@ with st.sidebar:
         user = verify_pin(pin)
         if user:
             st.session_state["user"] = user
+            st.rerun()
         else:
             st.error("Invalid PIN")
-    if "user" in st.session_state:
-        if st.button("Log Out"):
-            del st.session_state["user"]
-            st.rerun()
 
 if "user" in st.session_state:
     if st.session_state.user == "admin":
