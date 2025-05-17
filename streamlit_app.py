@@ -65,23 +65,29 @@ def login_page():
         st.session_state.pin = ''
 
     st.write("Your passcode is required to enable Face ID")
-    st.text(" ".join(["●" if i < len(pin) else "○" for i in range(4)]))
+    st.markdown(f"<h1 style='text-align: center;'>{' '.join(['●' if i < len(pin) else '○' for i in range(4)])}</h1>", unsafe_allow_html=True)
 
     cols = st.columns(3)
     for i in range(1, 10):
-        if cols[(i - 1) % 3].button(str(i)):
+        if cols[(i - 1) % 3].button(str(i), key=f"btn_{i}"):
             handle_digit(str(i))
+            st.experimental_rerun()
+
     if cols[0].button("Clear"):
         clear_pin()
-    if cols[1].button("0"):
+        st.experimental_rerun()
+    if cols[1].button("0", key="btn_0"):
         handle_digit("0")
+        st.experimental_rerun()
 
     if len(pin) == 4:
         if pin == '3320':
             st.session_state.logged_in = True
+            st.experimental_rerun()
         else:
             st.error("Incorrect PIN. Try again.")
             clear_pin()
+            st.experimental_rerun()
 
 # --- Admin Dashboard ---
 def admin_dashboard():
@@ -152,8 +158,11 @@ def user_dashboard(user_id):
 # --- Main App ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
+if 'pin' not in st.session_state:
+    st.session_state.pin = ''
 
 if not st.session_state.logged_in:
     login_page()
 else:
     admin_dashboard()
+    
