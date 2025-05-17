@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import datetime
 from io import BytesIO
+from streamlit_autorefresh import st_autorefresh  # ✅ Added
 
 # Set page config FIRST
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
@@ -131,7 +132,6 @@ def admin_dashboard():
 
 # User Dashboard
 def user_dashboard(username):
-    st.experimental_set_query_params(refresh=str(datetime.datetime.now().timestamp()))
     st.title(f"👋 Welcome {username}")
     if st.button("Logout"):
         del st.session_state["user"]
@@ -190,6 +190,5 @@ if "user" in st.session_state:
     if st.session_state.user == "admin":
         admin_dashboard()
     else:
-        st_autorefresh = st.experimental_rerun if "last_refresh" not in st.session_state or (datetime.datetime.now() - st.session_state.last_refresh).seconds >= 5 else None
-        st.session_state.last_refresh = datetime.datetime.now()
+        st_autorefresh(interval=5000, key="userdash_refresh")  # ✅ 5-second refresh
         user_dashboard(st.session_state.user)
