@@ -182,40 +182,34 @@ elif st.session_state.user_type == "admin":
         st.header("📋 Manage Flights")
 
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type="xlsx")
-      if uploaded_file:
-    try:
-        # Read DOM and INT sheets
-        df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
-        df_int = pd.read_excel(uploaded_file, sheet_name="INT")
-
-        # Combine both sheets
-        combined_df = pd.concat([df_dom, df_int], ignore_index=True)
-
-        for idx, row in combined_df.iterrows():
+        if uploaded_file:
             try:
-                flight_number = str(row["I"]).strip().upper()
-                aircraft = str(row["B"]).strip()
-                std_raw = row["K"]
+                df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
+                df_int = pd.read_excel(uploaded_file, sheet_name="INT")
+                combined_df = pd.concat([df_dom, df_int], ignore_index=True)
 
-                if pd.isna(flight_number) or pd.isna(std_raw):
-                    continue  # Skip incomplete rows
+                for idx, row in combined_df.iterrows():
+                    try:
+                        flight_number = str(row["I"]).strip().upper()
+                        aircraft = str(row["B"]).strip()
+                        std_raw = row["K"]
 
-                std = pd.to_datetime(std_raw, errors='coerce')
-                if pd.isna(std):
-                    continue
+                        if pd.isna(flight_number) or pd.isna(std_raw):
+                            continue
 
-                std_iso = std.isoformat()
+                        std = pd.to_datetime(std_raw, errors='coerce')
+                        if pd.isna(std):
+                            continue
 
-                # Add if not already exists
-                if not flight_exists(flight_number, std_iso):
-                    add_flight(flight_number, aircraft, std_iso)
+                        std_iso = std.isoformat()
+                        if not flight_exists(flight_number, std_iso):
+                            add_flight(flight_number, aircraft, std_iso)
+                    except Exception as e:
+                        st.warning(f"⚠️ Row {idx+2} skipped due to error: {e}")
+
+                st.success("✅ Flights successfully imported.")
             except Exception as e:
-                st.warning(f"⚠️ Row {idx+2} skipped due to error: {e}")
-
-        st.success("✅ Flights successfully imported.")
-
-    except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+                st.error(f"❌ Error reading file: {e}")
 
         flights = get_flights()
         if flights:
