@@ -132,7 +132,7 @@ if st.session_state.user_type is None:
             user = authenticate_user(code)
             if user:
                 st.session_state.user_type = "user"
-                st.session_state.username = user[0]
+                st.session_state.username = user[0] if isinstance(user, tuple) else user
                 st.rerun()
             else:
                 st.error("Invalid passcode")
@@ -142,7 +142,7 @@ if st.session_state.user_type is None:
 elif st.session_state.user_type == "admin":
     st.title("🛠 Admin Dashboard")
 
-    tab1, tab2, tab3 = st.tabs(["Users", "Flights", "Logout"])
+    tab1, tab2, tab3 = st.tabs(["Users", "Flights", "🚪 Logout"])
 
     with tab1:
         st.header("👥 Manage Users")
@@ -154,17 +154,17 @@ elif st.session_state.user_type == "admin":
                 col1, col2, col3 = st.columns(3)
                 if col1.button("Update", key=f"update_{user[0]}"):
                     update_user(user[0], new_name, int(new_code))
-                    st.success("User updated")
+                    st.success("✅ User updated")
                     st.rerun()
                 with col2:
                     is_active = st.checkbox("🟢 Active" if user[3] else "🔴 Inactive", value=bool(user[3]), key=f"active_switch_{user[0]}")
                     if is_active != bool(user[3]):
                         toggle_user_active(user[0], user[3])
-                        st.success("User status updated")
+                        st.success("🔁 User status updated")
                         st.rerun()
                 if col3.button("Delete", key=f"delete_{user[0]}"):
                     delete_user(user[0])
-                    st.success("User deleted")
+                    st.success("🗑️ User deleted")
                     st.rerun()
 
         st.subheader("➕ Add New User")
@@ -173,10 +173,10 @@ elif st.session_state.user_type == "admin":
         if st.button("Add User"):
             if name and passcode.isdigit():
                 add_user(name, int(passcode))
-                st.success("User added")
+                st.success("✅ User added")
                 st.rerun()
             else:
-                st.error("Enter valid name and numeric passcode")
+                st.error("❌ Enter valid name and numeric passcode")
 
     with tab2:
         st.header("📋 Manage Flights")
@@ -194,7 +194,7 @@ elif st.session_state.user_type == "admin":
                     if pd.notna(std) and not flight_exists(flight, std.isoformat()):
                         add_flight(flight, aircraft, std.isoformat())
             except Exception as e:
-                st.error(f"Error processing file: {e}")
+                st.error(f"❌ Error processing file: {e}")
 
         flights = get_flights()
         if flights:
@@ -212,15 +212,16 @@ elif st.session_state.user_type == "admin":
                 col1, col2 = st.columns(2)
                 if col1.button("Assign", key=f"assign_btn_{flight[0]}"):
                     allocate_flight(flight[0], selected_user)
-                    st.success(f"Assigned to {selected_user}")
+                    st.success(f"✅ Assigned to {selected_user}")
                     st.rerun()
                 if col2.button("Update STD", key=f"update_std_btn_{flight[0]}"):
                     update_std(flight[0], new_std.isoformat())
-                    st.success("STD updated")
+                    st.success("🕒 STD updated")
                     st.rerun()
 
     with tab3:
-        if st.button("Logout"):
+        st.subheader("🚪 Logout")
+        if st.button("🔓 Logout Now"):
             st.session_state.user_type = None
             st.session_state.passcode_entered = ""
             st.session_state.username = ""
@@ -237,17 +238,18 @@ elif st.session_state.user_type == "user":
     for flight in my_flights:
         with st.expander(f"{status_emoji.get(flight[4], '')} {flight[1]} — STD: {flight[3]} — Status: {flight[4]}"):
             if flight[4] == "allocated":
-                if st.button("Mark as Complete", key=f"complete_{flight[0]}"):
+                if st.button("✅ Mark as Complete", key=f"complete_{flight[0]}"):
                     mark_complete(flight[0])
                     st.success("Task marked complete")
                     st.rerun()
             elif flight[4] == "completed":
-                if st.button("Mark as Incomplete", key=f"incomplete_{flight[0]}"):
+                if st.button("↩️ Mark as Incomplete", key=f"incomplete_{flight[0]}"):
                     mark_incomplete(flight[0])
                     st.success("Task marked incomplete")
                     st.rerun()
 
-    if st.button("Logout"):
+    st.subheader("🚪 Logout")
+    if st.button("🔓 Logout Now"):
         st.session_state.user_type = None
         st.session_state.username = ""
         st.session_state.passcode_entered = ""
