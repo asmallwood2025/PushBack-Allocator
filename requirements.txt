@@ -1,6 +1,6 @@
-Streamlit
-Pandas
-SQLite3
-Openpyxl
-Random
-String
+streamlit
+pandas
+sQLite3
+openpyxl
+random
+string
