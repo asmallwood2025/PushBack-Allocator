@@ -62,10 +62,22 @@ def admin_dashboard():
                 try:
                     flight = str(row[8]).strip()  # Column I = index 8
                     aircraft = str(row[1]).strip()  # Column B = index 1
-                    std = pd.to_datetime(row[10])  # Column K = index 10
-                    if flight:
-                        c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
-                        created += 1
+                    std_raw = str(row[10]).strip()  # Column K = index 10
+
+                    if not flight or not std_raw:
+                        raise ValueError("Missing flight or STD")
+
+                    try:
+                        std = pd.to_datetime(std_raw, errors='coerce')
+                        if pd.isna(std):
+                            std = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
+                        if pd.isna(std):
+                            raise ValueError(f"Unrecognized time format: {std_raw}")
+                    except Exception as inner_e:
+                        raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
+
+                    c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
+                    created += 1
                 except Exception as e:
                     st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
             conn.commit()
