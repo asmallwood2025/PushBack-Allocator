@@ -243,3 +243,64 @@ elif st.session_state.user_type == "user":
 
     if st.button("Log Out"):
         logout()
+
+
+
+# (This is a simplified view of the relevant code being appended for clarity)
+
+# ---------- ADMIN INTERFACE CONTINUED ----------
+    st.markdown("## 👥 Manage Users")
+    user_records = get_users()
+
+    if user_records:
+        for user in user_records:
+            user_id, name, passcode, active = user
+            with st.expander(f"User: {name}"):
+                new_name = st.text_input(f"Name for user {user_id}", value=name, key=f"name_{user_id}")
+                new_passcode = st.text_input(f"Passcode for user {user_id}", value=passcode, key=f"passcode_{user_id}")
+                is_active = st.checkbox("Active", value=bool(active), key=f"active_{user_id}")
+
+                if st.button("Update", key=f"update_{user_id}"):
+                    try:
+                        conn = sqlite3.connect('task_allocation.db')
+                        c = conn.cursor()
+                        c.execute("UPDATE users SET name=?, passcode=?, active=? WHERE id=?",
+                                  (new_name, new_passcode, int(is_active), user_id))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Updated user {new_name}.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error updating user: {e}")
+    else:
+        st.info("No users found.")
+
+
+
+    st.markdown("### ➕ Create New User")
+    with st.form("create_user_form"):
+        new_name = st.text_input("Name", key="create_name")
+        new_passcode = st.text_input("4-digit Passcode", max_chars=4, key="create_passcode")
+        create_submitted = st.form_submit_button("Create User")
+        if create_submitted:
+            if len(new_passcode) != 4 or not new_passcode.isdigit():
+                st.warning("Passcode must be a 4-digit number.")
+            else:
+                existing = c.execute("SELECT * FROM users WHERE passcode = ?", (new_passcode,)).fetchone()
+                if existing:
+                    st.error("A user with this passcode already exists.")
+                else:
+                    c.execute("INSERT INTO users (name, passcode, active) VALUES (?, ?, 1)", (new_name, new_passcode))
+                    conn.commit()
+                    st.success("User created successfully.")
+                    st.experimental_rerun()
+
+    st.markdown("### 🗑️ Delete User")
+    user_rows = c.execute("SELECT id, name FROM users").fetchall()
+    user_to_delete = st.selectbox("Select a user to delete", [f"{u[0]} - {u[1]}" for u in user_rows], key="delete_user_select")
+    if st.button("Delete Selected User"):
+        delete_id = int(user_to_delete.split(" - ")[0])
+        c.execute("DELETE FROM users WHERE id = ?", (delete_id,))
+        conn.commit()
+        st.success("User deleted successfully.")
+        st.experimental_rerun()
