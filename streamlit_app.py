@@ -103,6 +103,150 @@ if "username" not in st.session_state:
 if "passcode_entered" not in st.session_state:
     st.session_state.passcode_entered = ""
 
-# The rest of the app logic continues unchanged...
-# (Not repeating full interface code here for brevity)
-# Let me know if you'd like this full logic reincluded after the fix.
+# Login Page
+if st.session_state.user_type is None:
+    st.title("🔐 Login")
+    st.write("Enter 4-digit passcode:")
+
+    keypad = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], ["Clear", "0", "⌫"]]
+    cols = st.columns(3)
+    for i, row in enumerate(keypad):
+        for j, key in enumerate(row):
+            if cols[j].button(key, key=f"{key}_{i}_{j}"):
+                if key == "Clear":
+                    st.session_state.passcode_entered = ""
+                elif key == "⌫":
+                    st.session_state.passcode_entered = st.session_state.passcode_entered[:-1]
+                else:
+                    if len(st.session_state.passcode_entered) < 4:
+                        st.session_state.passcode_entered += key
+
+    st.write(f"Entered: {'*' * len(st.session_state.passcode_entered)}")
+
+    if len(st.session_state.passcode_entered) == 4:
+        code = st.session_state.passcode_entered
+        if code == "3320":
+            st.session_state.user_type = "admin"
+            st.rerun()
+        else:
+            user = authenticate_user(code)
+            if user:
+                st.session_state.user_type = "user"
+                st.session_state.username = user[0]
+                st.rerun()
+            else:
+                st.error("Invalid passcode")
+                st.session_state.passcode_entered = ""
+
+# Admin Dashboard
+elif st.session_state.user_type == "admin":
+    st.title("🛠 Admin Dashboard")
+
+    tab1, tab2, tab3 = st.tabs(["Users", "Flights", "Logout"])
+
+    with tab1:
+        st.header("👥 Manage Users")
+        users = get_users()
+        for user in users:
+            with st.expander(f"User: {user[1]}"):
+                new_name = st.text_input("Edit Name", value=user[1], key=f"name_{user[0]}")
+                new_code = st.text_input("Edit Passcode", value=str(user[2]), key=f"code_{user[0]}")
+                col1, col2, col3 = st.columns(3)
+                if col1.button("Update", key=f"update_{user[0]}"):
+                    update_user(user[0], new_name, int(new_code))
+                    st.success("User updated")
+                    st.rerun()
+                if col2.button("Toggle Active", key=f"toggle_{user[0]}"):
+                    toggle_user_active(user[0], user[3])
+                    st.success("User status updated")
+                    st.rerun()
+                if col3.button("Delete", key=f"delete_{user[0]}"):
+                    delete_user(user[0])
+                    st.success("User deleted")
+                    st.rerun()
+
+        st.subheader("➕ Add New User")
+        name = st.text_input("New Username")
+        passcode = st.text_input("New Passcode", type="password")
+        if st.button("Add User"):
+            if name and passcode.isdigit():
+                add_user(name, int(passcode))
+                st.success("User added")
+                st.rerun()
+            else:
+                st.error("Enter valid name and numeric passcode")
+
+    with tab2:
+        st.header("📋 Manage Flights")
+
+        uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type="xlsx")
+        if uploaded_file:
+            try:
+                df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
+                df_int = pd.read_excel(uploaded_file, sheet_name="INT")
+                combined_df = pd.concat([df_dom, df_int])
+                for _, row in combined_df.iterrows():
+                    flight = str(row.iloc[8])
+                    aircraft = str(row.iloc[9])
+                    std = pd.to_datetime(row.iloc[10], errors='coerce')
+                    if pd.notna(std) and not flight_exists(flight, std.isoformat()):
+                        add_flight(flight, aircraft, std.isoformat())
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
+
+        flights = get_flights()
+        if flights:
+            df = pd.DataFrame(flights, columns=["ID", "Flight", "A/C", "STD", "Status", "Assigned To"])
+            df["STD"] = pd.to_datetime(df["STD"], errors='coerce')
+            df = df.sort_values(by="STD")
+            st.dataframe(df)
+
+        st.subheader("✈️ Allocate or Reschedule Flights")
+        for flight in flights:
+            with st.expander(f"{flight[1]} — STD: {flight[3]} — A/C: {flight[2]} — Status: {flight[4]}"):
+                user_list = [u[1] for u in get_users() if u[3] == 1]
+                selected_user = st.selectbox("Assign to", user_list, index=0 if user_list else None, key=f"assign_{flight[0]}")
+                new_std = st.datetime_input("Reschedule STD", value=pd.to_datetime(flight[3]), key=f"std_{flight[0]}")
+                col1, col2 = st.columns(2)
+                if col1.button("Assign", key=f"assign_btn_{flight[0]}"):
+                    allocate_flight(flight[0], selected_user)
+                    st.success(f"Assigned to {selected_user}")
+                    st.rerun()
+                if col2.button("Update STD", key=f"update_std_btn_{flight[0]}"):
+                    update_std(flight[0], new_std.isoformat())
+                    st.success("STD updated")
+                    st.rerun()
+
+    with tab3:
+        if st.button("Logout"):
+            st.session_state.user_type = None
+            st.session_state.passcode_entered = ""
+            st.session_state.username = ""
+            st.rerun()
+
+# User Dashboard
+elif st.session_state.user_type == "user":
+    st.title(f"👤 {st.session_state.username}'s Dashboard")
+    flights = get_flights()
+    my_flights = [f for f in flights if f[5] == st.session_state.username]
+    status_emoji = {"unallocated": "🔴", "allocated": "🟡", "completed": "🟢"}
+
+    st.subheader("🟢 Your Tasks")
+    for flight in my_flights:
+        with st.expander(f"{status_emoji.get(flight[4], '')} {flight[1]} — STD: {flight[3]} — Status: {flight[4]}"):
+            if flight[4] == "allocated":
+                if st.button("Mark as Complete", key=f"complete_{flight[0]}"):
+                    mark_complete(flight[0])
+                    st.success("Task marked complete")
+                    st.rerun()
+            elif flight[4] == "completed":
+                if st.button("Mark as Incomplete", key=f"incomplete_{flight[0]}"):
+                    mark_incomplete(flight[0])
+                    st.success("Task marked incomplete")
+                    st.rerun()
+
+    if st.button("Logout"):
+        st.session_state.user_type = None
+        st.session_state.username = ""
+        st.session_state.passcode_entered = ""
+        st.rerun()
