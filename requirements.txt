@@ -1,0 +1,6 @@
+Streamlit
+Pandas
+SQLite3
+Openpyxl
+Random
+String
