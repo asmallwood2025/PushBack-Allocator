@@ -22,6 +22,13 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
              username TEXT UNIQUE,
              pin TEXT UNIQUE)''')
 
+# Ensure 'pin' column exists (migration logic)
+try:
+    c.execute("ALTER TABLE users ADD COLUMN pin TEXT UNIQUE")
+    conn.commit()
+except sqlite3.OperationalError:
+    pass  # Column already exists
+
 conn.commit()
 
 # Helper functions
@@ -80,12 +87,46 @@ def read_flights_from_excel(uploaded_file):
 # UI starts here
 st.title("Flight Task Management")
 
-# Login page
-pin_code = st.text_input("Enter your PIN code to continue", type="password")
-if not pin_code:
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.username = None
+
+if not st.session_state.authenticated:
+    st.subheader("Enter your PIN")
+    cols = st.columns([1, 1, 1])
+    pin_input = ""
+    for i in range(3):
+        with cols[i]:
+            for j in range(1, 4):
+                if st.button(str(3 * i + j)):
+                    st.session_state.pin_code = st.session_state.get("pin_code", "") + str(3 * i + j)
+    with cols[1]:
+        if st.button("0"):
+            st.session_state.pin_code = st.session_state.get("pin_code", "") + "0"
+    if st.button("Clear"):
+        st.session_state.pin_code = ""
+    if st.button("Enter"):
+        pin_code = st.session_state.get("pin_code", "")
+        if pin_code == "3320":
+            st.session_state.authenticated = True
+            st.session_state.username = "admin"
+        else:
+            user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
+            if not user_df.empty:
+                st.session_state.authenticated = True
+                st.session_state.username = user_df.iloc[0]['username']
+            else:
+                st.error("Invalid PIN code.")
+    st.write(f"Entered PIN: {st.session_state.get('pin_code', '')}")
     st.stop()
 
-if pin_code == "3320":
+if st.button("Log Out"):
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    st.session_state.pin_code = ""
+    st.rerun()
+
+if st.session_state.username == "admin":
     st.success("Admin access granted")
     tabs = st.tabs(["Flights", "Users"])
     tab_flights, tab_users = tabs
@@ -135,12 +176,7 @@ if pin_code == "3320":
             delete_user(user_to_delete)
             st.success(f"User '{user_to_delete}' deleted.")
 else:
-    user_df = pd.read_sql_query("SELECT username FROM users WHERE pin = ?", conn, params=(pin_code,))
-    if user_df.empty:
-        st.error("Invalid PIN code.")
-        st.stop()
-
-    username = user_df.iloc[0]['username']
+    username = st.session_state.username
     st.success(f"Welcome, {username}!")
     st.subheader("Your Assigned Flights")
     tasks_df = get_tasks_for_user(username)
