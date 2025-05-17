@@ -1,213 +1,267 @@
+This is the code you wrote so far 
+
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import datetime
 
-# --- Database setup ---
-conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
-c = conn.cursor()
+# ---------- DATABASE SETUP ----------
+def create_db():
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, passcode INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS flights (flight_id INTEGER PRIMARY KEY, flight_number TEXT, status TEXT, assigned_user_id INTEGER)''')
+    conn.commit()
+    conn.close()
 
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    active INTEGER
-)''')
+create_db()
 
-c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    flight_number TEXT,
-    aircraft TEXT,
-    std TEXT,
-    user_id INTEGER,
-    completed INTEGER DEFAULT 0
-)''')
-conn.commit()
+# ---------- DATABASE HELPERS ----------
+def get_users():
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users")
+    users = c.fetchall()
+    conn.close()
+    return users
 
-# --- Helper functions ---
-def load_schedule(file):
-    xls = pd.ExcelFile(file)
-    flights = []
-    for sheet in ['DOM', 'INT']:
-        if sheet in xls.sheet_names:
-            df = xls.parse(sheet)
+def add_user(name, passcode):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO users (name, passcode) VALUES (?, ?)", (name, passcode))
+    conn.commit()
+    conn.close()
 
-            st.write(f"Columns in {sheet} sheet:", df.columns.tolist())
+def add_flight(flight_number):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO flights (flight_number, status) VALUES (?, 'unallocated')", (flight_number,))
+    conn.commit()
+    conn.close()
 
-            required_cols = ['Flight Number', 'A/C', 'STD']
-            if not all(col in df.columns for col in required_cols):
-                st.warning(f"Skipping sheet '{sheet}': Missing one of {required_cols}")
-                continue
+def allocate_flight(flight_id, user_id):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("UPDATE flights SET status='allocated', assigned_user_id=? WHERE flight_id=?", (user_id, flight_id))
+    conn.commit()
+    conn.close()
 
-            for _, row in df.iterrows():
-                try:
-                    flight = str(row['Flight Number'])
-                    ac = str(row['A/C'])
-                    std_raw = row['STD']
-                    std = pd.to_datetime(std_raw).strftime('%Y-%m-%d %H:%M')
-                    flights.append((flight, ac, std))
-                except Exception as e:
-                    st.warning(f"Skipping row due to error: {e}")
-                    continue
+def update_flight_status(flight_id, status):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("UPDATE flights SET status=? WHERE flight_id=?", (status, flight_id))
+    conn.commit()
+    conn.close()
+
+def get_flights():
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM flights")
+    flights = c.fetchall()
+    conn.close()
     return flights
 
-def add_tasks(flights):
-    for flight, ac, std in flights:
-        c.execute("INSERT INTO tasks (flight_number, aircraft, std) VALUES (?, ?, ?)", (flight, ac, std))
-    conn.commit()
+def get_user_by_passcode(passcode):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE passcode=?", (passcode,))
+    user = c.fetchone()
+    conn.close()
+    return user
 
-def get_tasks():
-    c.execute("SELECT * FROM tasks ORDER BY std")
-    return c.fetchall()
+# ---------- STREAMLIT INTERFACE ----------
+st.set_page_config(page_title="Flight Allocator", layout="centered")
 
-def get_users():
-    c.execute("SELECT * FROM users")
-    return c.fetchall()
+# Add the missing triple-quote closure
+st.markdown(
+    """
+    <style>
+    .stButton > button {
+        border-radius: 50%;
+        width: 80px;
+        height: 80px;
+        font-size: 30px;
+        background-color: red !important;
+        color: white !important;
+        margin: 10px;
+    }
+    .stTextInput > div > input {
+        font-size: 24px;
+        text-align: center;
+    }
+    .stTextInput {
+        text-align: center;
+        font-size: 20px;
+    }
+    .stSelectbox {
+        font-size: 20px;
+    }
+    .landing-container {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        height: 100vh;
+        text-align: center;
+        margin-top: 10%;
+    }
+    .pin-container {
+        display: flex;
+        justify-content: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# --- Login Page ---
-def login_page():
-    st.markdown("""
-        <style>
-            .pin-title {
-                font-size: 2.5em;
-                font-weight: 700;
-                text-align: center;
-                color: #c00;
-            }
-            .pin-subtitle {
-                text-align: center;
-                font-size: 1.2em;
-                color: #666;
-                margin-bottom: 20px;
-            }
-            .pin-circles {
-                text-align: center;
-                font-size: 2em;
-                letter-spacing: 20px;
-                color: #c00;
-                margin: 10px;
-            }
-            .stButton>button {
-                font-size: 1.5em;
-                padding: 15px;
-                margin: 10px;
-                width: 70px;
-                height: 70px;
-                background-color: #fff0f0;
-                border: 2px solid #c00;
-                color: #c00;
-                border-radius: 10px;
-            }
-            .stButton>button:hover {
-                background-color: #ffcccc;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+# ---------- USER REGISTRATION FOR THE FIRST TIME ----------
+# Predefined Users for Admin
+predefined_users = {
+    "3320": "Admin",
+    "0001": "Adam",
+    "0002": "Tadj",
+    "0003": "Darren",
+}
 
-    st.markdown("<div class='pin-title'>Enter Passcode</div>", unsafe_allow_html=True)
-    st.markdown("<div class='pin-subtitle'>Admin access only</div>", unsafe_allow_html=True)
+# ---------- LANDING PAGE - PASSCODE ENTRY ----------
+if 'passcode_entered' not in st.session_state:
+    st.session_state.passcode_entered = ""
 
-    pin = st.session_state.get('pin', '')
+def handle_button_click(num):
+    if len(st.session_state.passcode_entered) < 4:
+        st.session_state.passcode_entered += str(num)
+        if len(st.session_state.passcode_entered) == 4:
+            st.experimental_rerun()
 
-    def handle_digit(d):
-        if len(st.session_state.pin) < 4:
-            st.session_state.pin += d
+def logout():
+    st.session_state.passcode_entered = ""
+    st.session_state.user_type = None
+    st.session_state.username = None
+    st.experimental_rerun()
 
-    def clear_pin():
-        st.session_state.pin = ''
-
-    st.markdown(f"<div class='pin-circles'>{' '.join(['●' if i < len(pin) else '○' for i in range(4)])}</div>", unsafe_allow_html=True)
-
+# Center the login page and keypad
+with st.container():
+    st.markdown('<div class="landing-container">', unsafe_allow_html=True)
+    
+    # Display passcode input with grid layout for numbers 0-9
+    keypad_layout = [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+        [0]
+    ]
+    
     cols = st.columns(3)
-    for i in range(1, 10):
-        if cols[(i - 1) % 3].button(str(i), key=f"btn_{i}"):
-            handle_digit(str(i))
-
-    if cols[0].button("Clear"):
-        clear_pin()
-    if cols[1].button("0", key="btn_0"):
-        handle_digit("0")
-
-    if len(pin) == 4:
-        if pin == '3320':
-            st.session_state.logged_in = True
-            st.rerun()
+    for i, row in enumerate(keypad_layout):
+        with cols[i % 3]:  # Wrap each row with columns
+            for num in row:
+                st.button(str(num), key=f"btn{num}", on_click=handle_button_click, args=(num,))
+    
+    st.text_input("Entered Passcode", value=st.session_state.passcode_entered, disabled=True)
+    
+    if len(st.session_state.passcode_entered) == 4:
+        user_passcode = st.session_state.passcode_entered
+        user = predefined_users.get(user_passcode)
+        
+        if user_passcode == "3320":
+            st.session_state.user_type = "admin"
+            st.experimental_rerun()
+        elif user:
+            st.session_state.user_type = "user"
+            st.session_state.username = user
+            st.experimental_rerun()
         else:
-            st.error("Incorrect PIN. Try again.")
-            clear_pin()
+            st.session_state.passcode_entered = ""
+            st.error("❌ Invalid passcode. Please try again.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Admin Dashboard ---
-def admin_dashboard():
-    st.title("Admin Dashboard")
-    tabs = st.tabs(["Users", "Flights"])
+# ---------- ADMIN INTERFACE ----------
+if st.session_state.get('user_type') == 'admin':
+    st.title('Admin Dashboard')
+    st.subheader('👨‍✈️ Admin Interface')
 
-    with tabs[0]:
-        st.subheader("User Management")
-        name = st.text_input("User Name")
+    uploaded_file = st.file_uploader("Upload Flight File (CSV or Excel)", type=["csv", "xlsx"])
+
+    if uploaded_file is not None:
+        try:
+            st.write("Debug: File uploaded.")
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+
+            st.write("Debug: File loaded successfully:")
+            st.write(df.head())  # Show the first few rows for debugging
+
+            for flight_number in df.iloc[:, 0]:  # Assuming flight numbers are in the first column
+                add_flight(str(flight_number))
+            st.success("✅ Flights uploaded successfully.")
+
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+            st.write(f"Debug: Error - {e}")
+
+    # Add new user form
+    st.markdown("### Add New User")
+    new_user_name = st.text_input("User Name")
+    new_user_passcode = st.text_input("User Passcode", type="password")
+    
+    if new_user_name and new_user_passcode:
         if st.button("Add User"):
-            c.execute("INSERT INTO users (name, active) VALUES (?, 1)", (name,))
-            conn.commit()
-        for user in get_users():
-            col1, col2, col3 = st.columns([3, 1, 1])
-            with col1:
-                new_name = st.text_input(f"Edit {user[1]}", user[1], key=f"name_{user[0]}")
-            with col2:
-                if st.button("Update", key=f"update_{user[0]}"):
-                    c.execute("UPDATE users SET name=? WHERE id=?", (new_name, user[0]))
-                    conn.commit()
-            with col3:
-                if st.button("Delete", key=f"delete_{user[0]}"):
-                    c.execute("DELETE FROM users WHERE id=?", (user[0],))
-                    conn.commit()
-            st.toggle("Active", value=bool(user[2]), key=f"toggle_{user[0]}", on_change=lambda uid=user[0]: c.execute("UPDATE users SET active=? WHERE id=?", (int(not user[2]), uid)) or conn.commit())
+            try:
+                add_user(new_user_name, new_user_passcode)
+                st.success(f"✅ User {new_user_name} added successfully.")
+            except Exception as e:
+                st.error(f"❌ Error adding user: {e}")
+    
+    st.markdown("### Allocate Flights")
+    flights = get_flights()
+    unallocated = [f for f in flights if f[3] is None]
 
-    with tabs[1]:
-        st.subheader("Flight Task Management")
-        uploaded = st.file_uploader("Upload Flight Schedule (XLSX)", type='xlsx')
-        if uploaded:
-            tasks = load_schedule(uploaded)
-            add_tasks(tasks)
-            st.success("Tasks Imported Successfully")
+    if unallocated:
+        flight_selection = st.selectbox('Select flight to allocate:', [f"{f[1]} (ID: {f[0]})" for f in unallocated])
+        users = get_users()
+        user_selection = st.selectbox('Select user to assign:', [f"{u[1]} (Passcode: {u[2]})" for u in users])
+        
+        if st.button("Allocate Flight"):
+            flight_id = int(flight_selection.split("ID: ")[1].replace(")", ""))
+            user_id = int(user_selection.split(" (")[0])
+            allocate_flight(flight_id, user_id)
+            st.success("✅ Flight allocated.")
+            st.experimental_rerun()
 
-        st.subheader("Scheduled Tasks")
-        for task in get_tasks():
-            col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
-            col1.text(task[1])  # flight number
-            col2.text(task[2])  # aircraft
-            std = col3.text_input("STD", task[3], key=f"std_{task[0]}")
-            user_list = [(str(u[0]), u[1]) for u in get_users() if u[2] == 1]
-            selected_user = col4.selectbox("Assign to", ["None"] + [u[1] for u in user_list], key=f"assign_{task[0]}")
-            if st.button("Update Task", key=f"update_task_{task[0]}"):
-                new_user_id = None
-                for uid, uname in user_list:
-                    if uname == selected_user:
-                        new_user_id = uid
-                c.execute("UPDATE tasks SET std=?, user_id=? WHERE id=?", (std, new_user_id, task[0]))
-                conn.commit()
+    st.markdown("### Update Flight Status")
+    all_flights = get_flights()
 
-# --- User Dashboard ---
-def user_dashboard(user_id):
-    st.title("My Tasks")
-    c.execute("SELECT * FROM tasks WHERE user_id=? AND completed=0 ORDER BY std", (user_id,))
-    tasks = c.fetchall()
-    for task in tasks:
-        if st.button(f"Mark Complete: {task[1]}", key=f"done_{task[0]}"):
-            c.execute("UPDATE tasks SET completed=1 WHERE id=?", (task[0],))
-            conn.commit()
-    st.subheader("Completed Tasks")
-    c.execute("SELECT * FROM tasks WHERE user_id=? AND completed=1 ORDER BY std DESC", (user_id,))
-    completed = c.fetchall()
-    for task in completed:
-        if st.button(f"Mark Incomplete: {task[1]}", key=f"undo_{task[0]}"):
-            c.execute("UPDATE tasks SET completed=0 WHERE id=?", (task[0],))
-            conn.commit()
+    if all_flights:
+        flight_update = st.selectbox("Choose a flight", [f"{f[1]} (ID: {f[0]}, Status: {f[2]})" for f in all_flights])
+        new_status = st.selectbox("New status", ['unallocated', 'allocated', 'completed', 'delayed'])
+        if st.button("Update Status"):
+            flight_id = int(flight_update.split("ID: ")[1].split(",")[0])
+            update_flight_status(flight_id, new_status)
+            st.success("✅ Flight status updated.")
+            st.experimental_rerun()
+    else:
+        st.info("No flights found.")
+    
+    # Log out button
+    if st.button('Log out'):
+        logout()
 
-# --- Main App ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'pin' not in st.session_state:
-    st.session_state.pin = ''
+# ---------- USER INTERFACE ----------
+elif st.session_state.get('user_type') == 'user':
+    st.title(f"Welcome {st.session_state.username}")
+    st.subheader(f"Hello, {st.session_state.username}, here are your allocated flights.")
 
-if not st.session_state.logged_in:
-    login_page()
-else:
-    admin_dashboard()
+    flights = get_flights()
+    user_flights = [f for f in flights if f[3] == st.session_state.username]
+
+    if user_flights:
+        st.markdown("### ✈️ Your Allocated Flights")
+        for f in user_flights:
+            st.write(f"- {f[1]} — Status: {f[2]}")
+    else:
+        st.info("No allocated flights.")
+    
+    # Log out button
+    if st.button('Log out'):
+        logout()
