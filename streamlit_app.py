@@ -5,6 +5,45 @@ import random
 import string
 from io import StringIO
 
+# Inject custom CSS for red theme and circular buttons
+st.markdown("""
+    <style>
+        body {
+            background-color: white;
+            color: #000000;
+        }
+        .stButton>button {
+            background-color: #d32f2f;
+            color: white;
+            border-radius: 50%;
+            font-size: 20px;
+            height: 50px;
+            width: 50px;
+            margin: 5px;
+        }
+        .stButton>button:hover {
+            background-color: #b71c1c;
+        }
+        .stTextInput>div>input {
+            border: 1px solid #d32f2f;
+        }
+        .stTextInput>div>label {
+            color: #d32f2f;
+        }
+        .stSelectbox>div>label {
+            color: #d32f2f;
+        }
+        .stSelectbox>div>div>div>div {
+            background-color: #ffffff;
+            border: 1px solid #d32f2f;
+        }
+        .stAlert {
+            background-color: #d32f2f;
+            color: white;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Helper functions
 def create_db():
     conn = sqlite3.connect('task_allocation.db')
@@ -41,6 +80,13 @@ def allocate_flight(flight_id, user_id):
     conn = sqlite3.connect('task_allocation.db')
     c = conn.cursor()
     c.execute("UPDATE flights SET status='allocated', assigned_user_id=? WHERE flight_id=?", (user_id, flight_id))
+    conn.commit()
+    conn.close()
+
+def update_flight_status(flight_id, status):
+    conn = sqlite3.connect('task_allocation.db')
+    c = conn.cursor()
+    c.execute("UPDATE flights SET status=? WHERE flight_id=?", (status, flight_id))
     conn.commit()
     conn.close()
 
@@ -100,12 +146,52 @@ if option == 'Admin':
             user_id = next(user[0] for user in users if user[1] == user_name)
             allocate_flight(flight_id, user_id)
             st.success(f"Flight {flight_id} has been allocated to {user_name}.")
+            st.experimental_rerun()  # Trigger live update
+
+    # Update Flight Status
+    flight_to_update = st.selectbox('Select Flight to Update Status', [f"{flight[1]} (ID: {flight[0]})" for flight in flights])
+    status_options = ['unallocated', 'allocated', 'completed', 'delayed']
+    new_status = st.selectbox('Select New Status', status_options)
+    
+    if st.button('Update Flight Status'):
+        flight_id = int(flight_to_update.split(" (ID: ")[1].split(")")[0])
+        update_flight_status(flight_id, new_status)
+        st.success(f"Flight {flight_id} status has been updated to {new_status}.")
+        st.experimental_rerun()  # Trigger live update
 
 elif option == 'User':
     st.subheader('User Interface')
     
-    # Passcode Authentication
-    passcode = st.text_input("Enter your 4-digit Passcode", max_chars=4)
+    # Passcode Authentication - Circular Button Input (1-9 Keypad)
+    passcode = ""
+    def handle_button_click(number):
+        nonlocal passcode
+        passcode += str(number)
+        if len(passcode) == 4:
+            st.session_state.passcode_entered = passcode
+            st.experimental_rerun()
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    # 1-9 Circular Keypad Buttons
+    with col1:
+        for i in range(1, 4):
+            if st.button(str(i), key=f"btn_{i}"):
+                handle_button_click(i)
+
+    with col2:
+        for i in range(4, 7):
+            if st.button(str(i), key=f"btn_{i}"):
+                handle_button_click(i)
+
+    with col3:
+        for i in range(7, 10):
+            if st.button(str(i), key=f"btn_{i}"):
+                handle_button_click(i)
+
+    if 'passcode_entered' in st.session_state:
+        passcode = st.session_state.passcode_entered
+        st.text_input("Passcode", value=passcode, disabled=True)
     
     if passcode:
         user = get_user_by_passcode(passcode)
@@ -118,7 +204,7 @@ elif option == 'User':
             if allocated_flights:
                 st.write("Your allocated flights:")
                 for flight in allocated_flights:
-                    st.write(f"- {flight[1]}")
+                    st.write(f"- {flight[1]} (Status: {flight[2]})")
             else:
                 st.write("No flights allocated yet.")
         else:
