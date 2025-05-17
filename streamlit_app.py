@@ -304,3 +304,57 @@ elif st.session_state.user_type == "user":
         conn.commit()
         st.success("User deleted successfully.")
         st.experimental_rerun()
+
+
+# --- Users tab was missing; appended manually ---
+
+with tabs[2]:  # Users tab
+    st.subheader("👤 User Management")
+
+    # Add New User
+    st.markdown("### ➕ Add New User")
+    new_name = st.text_input("Name", key="new_user_name")
+    new_pin = st.text_input("PIN (4 digits)", type="password", key="new_user_pin")
+    if st.button("Create User", key="create_user_btn"):
+        if new_name and new_pin and new_pin.isdigit() and len(new_pin) == 4:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("INSERT INTO users (name, passcode, active) VALUES (?, ?, 1)", (new_name, new_pin))
+            conn.commit()
+            conn.close()
+            st.success(f"✅ User '{new_name}' created.")
+            st.rerun()
+        else:
+            st.error("❌ Please enter a valid name and 4-digit PIN.")
+
+    # Display existing users
+    st.markdown("### 👥 Existing Users")
+    users = get_users()
+    for user in users:
+        user_id, name, pin, active = user
+        cols = st.columns([2, 2, 2, 1, 1])
+
+        with cols[0]:
+            updated_name = st.text_input(f"Name {user_id}", value=name, key=f"name_{user_id}")
+        with cols[1]:
+            updated_pin = st.text_input(f"PIN {user_id}", value=str(pin), type="password", key=f"pin_{user_id}")
+        with cols[2]:
+            toggle = st.toggle("Active", value=bool(active), key=f"toggle_{user_id}")
+        with cols[3]:
+            if st.button("Update", key=f"update_{user_id}"):
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                c.execute("UPDATE users SET name=?, passcode=?, active=? WHERE id=?", (updated_name, updated_pin, int(toggle), user_id))
+                conn.commit()
+                conn.close()
+                st.success(f"✅ User {updated_name} updated.")
+                st.rerun()
+        with cols[4]:
+            if st.button("🗑️", key=f"delete_{user_id}"):
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                c.execute("DELETE FROM users WHERE id=?", (user_id,))
+                conn.commit()
+                conn.close()
+                st.warning(f"⚠️ User '{name}' deleted.")
+                st.rerun()
