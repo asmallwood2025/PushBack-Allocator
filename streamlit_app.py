@@ -1,112 +1,86 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import random
 import string
-from io import StringIO
+import json
+import os
 
-# Inject custom CSS for red theme and circular buttons
-st.markdown("""
-    <style>
-        body {
-            background-color: white;
-            color: #000000;
-        }
-        .stButton>button {
-            background-color: #d32f2f;
-            color: white;
-            border-radius: 50%;
-            font-size: 20px;
-            height: 50px;
-            width: 50px;
-            margin: 5px;
-        }
-        .stButton>button:hover {
-            background-color: #b71c1c;
-        }
-        .stTextInput>div>input {
-            border: 1px solid #d32f2f;
-        }
-        .stTextInput>div>label {
-            color: #d32f2f;
-        }
-        .stSelectbox>div>label {
-            color: #d32f2f;
-        }
-        .stSelectbox>div>div>div>div {
-            background-color: #ffffff;
-            border: 1px solid #d32f2f;
-        }
-        .stAlert {
-            background-color: #d32f2f;
-            color: white;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+# File paths
+USERS_FILE = 'users.json'
+FLIGHTS_FILE = 'flights.json'
 
 # Helper functions
-def create_db():
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    # Create tables
-    c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, passcode INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS flights (flight_id INTEGER PRIMARY KEY, flight_number TEXT, status TEXT, assigned_user_id INTEGER)''')
-    conn.commit()
-    conn.close()
+def load_data(filename):
+    """Load data from a JSON file."""
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
+            return json.load(file)
+    return {}
+
+def save_data(filename, data):
+    """Save data to a JSON file."""
+    with open(filename, 'w') as file:
+        json.dump(data, file, indent=4)
 
 def get_users():
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users")
-    users = c.fetchall()
-    conn.close()
-    return users
+    """Get the list of users from the users file."""
+    users_data = load_data(USERS_FILE)
+    return users_data.get('users', [])
 
 def add_user(name, passcode):
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO users (name, passcode) VALUES (?, ?)", (name, passcode))
-    conn.commit()
-    conn.close()
-
-def add_flight(flight_number):
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO flights (flight_number, status) VALUES (?, 'unallocated')", (flight_number,))
-    conn.commit()
-    conn.close()
-
-def allocate_flight(flight_id, user_id):
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("UPDATE flights SET status='allocated', assigned_user_id=? WHERE flight_id=?", (user_id, flight_id))
-    conn.commit()
-    conn.close()
-
-def update_flight_status(flight_id, status):
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("UPDATE flights SET status=? WHERE flight_id=?", (status, flight_id))
-    conn.commit()
-    conn.close()
+    """Add a new user to the users file."""
+    users_data = load_data(USERS_FILE)
+    users = users_data.get('users', [])
+    users.append({'name': name, 'passcode': passcode})
+    users_data['users'] = users
+    save_data(USERS_FILE, users_data)
 
 def get_flights():
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM flights")
-    flights = c.fetchall()
-    conn.close()
-    return flights
+    """Get the list of flights from the flights file."""
+    flights_data = load_data(FLIGHTS_FILE)
+    return flights_data.get('flights', [])
+
+def add_flight(flight_number):
+    """Add a new flight to the flights file."""
+    flights_data = load_data(FLIGHTS_FILE)
+    flights = flights_data.get('flights', [])
+    flights.append({'flight_number': flight_number, 'status': 'unallocated', 'assigned_user': None})
+    flights_data['flights'] = flights
+    save_data(FLIGHTS_FILE, flights_data)
+
+def allocate_flight(flight_number, user_name):
+    """Allocate a flight to a user."""
+    flights_data = load_data(FLIGHTS_FILE)
+    flights = flights_data.get('flights', [])
+    for flight in flights:
+        if flight['flight_number'] == flight_number and flight['status'] == 'unallocated':
+            flight['status'] = 'allocated'
+            flight['assigned_user'] = user_name
+            save_data(FLIGHTS_FILE, flights_data)
+            return True
+    return False
+
+def update_flight_status(flight_number, status):
+    """Update the status of a flight."""
+    flights_data = load_data(FLIGHTS_FILE)
+    flights = flights_data.get('flights', [])
+    for flight in flights:
+        if flight['flight_number'] == flight_number:
+            flight['status'] = status
+            save_data(FLIGHTS_FILE, flights_data)
+            return True
+    return False
 
 def get_user_by_passcode(passcode):
-    conn = sqlite3.connect('task_allocation.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE passcode=?", (passcode,))
-    user = c.fetchone()
-    conn.close()
-    return user
+    """Get a user by their passcode."""
+    users = get_users()
+    for user in users:
+        if user['passcode'] == passcode:
+            return user
+    return None
 
 def generate_passcode():
+    """Generate a random 4-digit passcode."""
     return ''.join(random.choices(string.digits, k=4))
 
 # Streamlit Interface
@@ -136,28 +110,27 @@ if option == 'Admin':
 
     # View and Allocate Flights
     flights = get_flights()
-    flight_to_allocate = st.selectbox('Select Flight to Allocate', [f"{flight[1]} (ID: {flight[0]})" for flight in flights if flight[3] is None])
+    flight_to_allocate = st.selectbox('Select Flight to Allocate', [f"{flight['flight_number']} (Status: {flight['status']})" for flight in flights if flight['status'] == 'unallocated'])
     
     if flight_to_allocate:
-        flight_id = int(flight_to_allocate.split(" (ID: ")[1].split(")")[0])
+        flight_number = flight_to_allocate.split(" (")[0]
         users = get_users()
-        user_name = st.selectbox('Select User to Allocate Flight', [user[1] for user in users])
+        user_name = st.selectbox('Select User to Allocate Flight', [user['name'] for user in users])
         if st.button('Allocate Flight'):
-            user_id = next(user[0] for user in users if user[1] == user_name)
-            allocate_flight(flight_id, user_id)
-            st.success(f"Flight {flight_id} has been allocated to {user_name}.")
-            st.experimental_rerun()  # Trigger live update
+            if allocate_flight(flight_number, user_name):
+                st.success(f"Flight {flight_number} has been allocated to {user_name}.")
+                st.experimental_rerun()  # Trigger live update
 
     # Update Flight Status
-    flight_to_update = st.selectbox('Select Flight to Update Status', [f"{flight[1]} (ID: {flight[0]})" for flight in flights])
+    flight_to_update = st.selectbox('Select Flight to Update Status', [f"{flight['flight_number']} (Status: {flight['status']})" for flight in flights])
     status_options = ['unallocated', 'allocated', 'completed', 'delayed']
     new_status = st.selectbox('Select New Status', status_options)
     
     if st.button('Update Flight Status'):
-        flight_id = int(flight_to_update.split(" (ID: ")[1].split(")")[0])
-        update_flight_status(flight_id, new_status)
-        st.success(f"Flight {flight_id} status has been updated to {new_status}.")
-        st.experimental_rerun()  # Trigger live update
+        flight_number = flight_to_update.split(" (")[0]
+        if update_flight_status(flight_number, new_status):
+            st.success(f"Flight {flight_number} status has been updated to {new_status}.")
+            st.experimental_rerun()  # Trigger live update
 
 elif option == 'User':
     st.subheader('User Interface')
@@ -196,15 +169,15 @@ elif option == 'User':
     if passcode:
         user = get_user_by_passcode(passcode)
         if user:
-            user_id, user_name, _ = user
+            user_name = user['name']
             st.write(f"Welcome {user_name}!")
             flights = get_flights()
-            allocated_flights = [flight for flight in flights if flight[3] == user_id]
+            allocated_flights = [flight for flight in flights if flight['assigned_user'] == user_name]
             
             if allocated_flights:
                 st.write("Your allocated flights:")
                 for flight in allocated_flights:
-                    st.write(f"- {flight[1]} (Status: {flight[2]})")
+                    st.write(f"- {flight['flight_number']} (Status: {flight['status']})")
             else:
                 st.write("No flights allocated yet.")
         else:
