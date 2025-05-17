@@ -55,7 +55,47 @@ def get_users():
 
 # --- Login Page ---
 def login_page():
-    st.title("Enter Passcode")
+    st.markdown("""
+        <style>
+            .pin-title {
+                font-size: 2.5em;
+                font-weight: 700;
+                text-align: center;
+                color: #c00;
+            }
+            .pin-subtitle {
+                text-align: center;
+                font-size: 1.2em;
+                color: #666;
+                margin-bottom: 20px;
+            }
+            .pin-circles {
+                text-align: center;
+                font-size: 2em;
+                letter-spacing: 20px;
+                color: #c00;
+                margin: 10px;
+            }
+            .stButton>button {
+                font-size: 1.5em;
+                padding: 15px;
+                margin: 10px;
+                width: 70px;
+                height: 70px;
+                background-color: #fff0f0;
+                border: 2px solid #c00;
+                color: #c00;
+                border-radius: 10px;
+            }
+            .stButton>button:hover {
+                background-color: #ffcccc;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div class='pin-title'>Enter Passcode</div>", unsafe_allow_html=True)
+    st.markdown("<div class='pin-subtitle'>Admin access only</div>", unsafe_allow_html=True)
+
     pin = st.session_state.get('pin', '')
 
     def handle_digit(d):
@@ -64,8 +104,7 @@ def login_page():
     def clear_pin():
         st.session_state.pin = ''
 
-    st.write("Your passcode is required to enable Face ID")
-    st.markdown(f"<h1 style='text-align: center;'>{' '.join(['●' if i < len(pin) else '○' for i in range(4)])}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<div class='pin-circles'>{' '.join(['●' if i < len(pin) else '○' for i in range(4)])}</div>", unsafe_allow_html=True)
 
     cols = st.columns(3)
     for i in range(1, 10):
