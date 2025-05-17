@@ -127,44 +127,101 @@ def admin_dashboard():
                 st.rerun()
 
 def user_dashboard(username):
+    from datetime import datetime
+
     st.experimental_set_query_params(refresh=str(time.time()))  # trigger refresh
     time.sleep(5)  # refresh interval
 
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
+    def get_status_color(std_time_str):
+        now = datetime.now()
+        try:
+            std_today = datetime.combine(now.date(), datetime.strptime(std_time_str, "%H:%M").time())
+        except:
+            return "#cccccc"  # fallback gray
+        diff = (std_today - now).total_seconds() / 60  # minutes
+
+        if diff <= 10:
+            return "#ff5252"  # Red
+        elif diff <= 15:
+            return "#ff9800"  # Orange
+        elif diff <= 25:
+            return "#4caf50"  # Green
+        else:
+            return "#cccccc"  # Gray
+
     with tabs[0]:
         st.header("🛠️ Your Tasks")
-        tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (username,)).fetchall()
-        
-        if tasks:
-            t = tasks[0]
-            col1, col2 = st.columns([4, 1])
-            col1.markdown(f"### ✈️ **{t[1]}**\n**Aircraft**: {t[2]} | **STD**: {t[3]}")
-            if col2.button("✅ Complete", key=f"user_complete_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
-                conn.commit()
-                st.rerun()
-        else:
-            st.info("No current tasks assigned.")
 
-        if len(tasks) > 1:
+        tasks = c.execute(
+            "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
+            (username,)
+        ).fetchall()
+
+        if tasks:
+            # Show current task
+            current = tasks[0]
+            color = get_status_color(current[3])
+            st.markdown("### 🟢 **Current Task**")
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
+                        <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
+                        <p><strong>Aircraft:</strong> {current[2]}</p>
+                        <p><strong>STD:</strong> {current[3]}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                if st.button("✅ Complete Current", key=f"complete_{current[0]}"):
+                    c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (current[0],))
+                    conn.commit()
+                    st.rerun()
+
+            # Show next task
+            if len(tasks) > 1:
+                next_task = tasks[1]
+                color = get_status_color(next_task[3])
+                st.markdown("### 🟡 **Next Task**")
+                with st.container():
+                    st.markdown(
+                        f"""
+                        <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
+                            <h3 style='margin-bottom: 10px;'>✈️ {next_task[1]}</h3>
+                            <p><strong>Aircraft:</strong> {next_task[2]}</p>
+                            <p><strong>STD:</strong> {next_task[3]}</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+        else:
+            st.info("You currently have no assigned tasks.")
+
+        # Show future tasks
+        if len(tasks) > 2:
             with st.expander("📋 View Future Tasks"):
-                for t in tasks[1:]:
+                for t in tasks[2:]:
                     col1, col2 = st.columns([4, 1])
-                    col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-                    if col2.button("Complete", key=f"user_complete_{t[0]}"):
+                    col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
+                    if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
                         c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
                         conn.commit()
                         st.rerun()
 
     with tabs[1]:
         st.header("📦 Completed Tasks")
-        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY std", (username,)).fetchall()
+        completed = c.execute(
+            "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY std",
+            (username,)
+        ).fetchall()
         for t in completed:
             col1, col2 = st.columns([4, 1])
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-            if col2.button("Reactivate", key=f"user_reactivate_{t[0]}"):
+            col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
+            if col2.button("🔁 Reactivate", key=f"reactivate_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 0 WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
@@ -172,20 +229,13 @@ def user_dashboard(username):
 # App Entry
 with st.sidebar:
     st.markdown("## 🔐 Sign In")
-    if "user" in st.session_state:
-        st.success(f"Logged in as {st.session_state.user}")
-        if st.button("Logout"):
-            del st.session_state["user"]
-            st.experimental_rerun()
-    else:
-        pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
-        if st.button("Login") and pin:
-            user = verify_pin(pin)
-            if user:
-                st.session_state["user"] = user
-                st.experimental_rerun()
-            else:
-                st.error("Invalid PIN")
+    pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
+    if st.button("Login") and pin:
+        user = verify_pin(pin)
+        if user:
+            st.session_state["user"] = user
+        else:
+            st.error("Invalid PIN")
 
 if "user" in st.session_state:
     if st.session_state.user == "admin":
