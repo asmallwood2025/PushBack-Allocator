@@ -156,10 +156,12 @@ elif st.session_state.user_type == "admin":
                     update_user(user[0], new_name, int(new_code))
                     st.success("User updated")
                     st.rerun()
-                if col2.button("Toggle Active", key=f"toggle_{user[0]}"):
-                    toggle_user_active(user[0], user[3])
-                    st.success("User status updated")
-                    st.rerun()
+                with col2:
+                    is_active = st.checkbox("🟢 Active" if user[3] else "🔴 Inactive", value=bool(user[3]), key=f"active_switch_{user[0]}")
+                    if is_active != bool(user[3]):
+                        toggle_user_active(user[0], user[3])
+                        st.success("User status updated")
+                        st.rerun()
                 if col3.button("Delete", key=f"delete_{user[0]}"):
                     delete_user(user[0])
                     st.success("User deleted")
