@@ -308,7 +308,7 @@ elif st.session_state.user_type == "user":
 
 # --- Users tab was missing; appended manually ---
 
-with tabs[2]:  # Users tab
+with tab2:  # Users tab
     st.subheader("👤 User Management")
 
     # Add New User
