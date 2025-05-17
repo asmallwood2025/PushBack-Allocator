@@ -136,13 +136,27 @@ def user_dashboard(username):
     with tabs[0]:
         st.header("🛠️ Your Tasks")
         tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (username,)).fetchall()
-        for t in tasks:
+        
+        if tasks:
+            t = tasks[0]
             col1, col2 = st.columns([4, 1])
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
-            if col2.button("Complete", key=f"user_complete_{t[0]}"):
+            col1.markdown(f"### ✈️ **{t[1]}**\n**Aircraft**: {t[2]} | **STD**: {t[3]}")
+            if col2.button("✅ Complete", key=f"user_complete_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
+        else:
+            st.info("No current tasks assigned.")
+
+        if len(tasks) > 1:
+            with st.expander("📋 View Future Tasks"):
+                for t in tasks[1:]:
+                    col1, col2 = st.columns([4, 1])
+                    col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+                    if col2.button("Complete", key=f"user_complete_{t[0]}"):
+                        c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
+                        conn.commit()
+                        st.rerun()
 
     with tabs[1]:
         st.header("📦 Completed Tasks")
@@ -158,13 +172,20 @@ def user_dashboard(username):
 # App Entry
 with st.sidebar:
     st.markdown("## 🔐 Sign In")
-    pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
-    if st.button("Login") and pin:
-        user = verify_pin(pin)
-        if user:
-            st.session_state["user"] = user
-        else:
-            st.error("Invalid PIN")
+    if "user" in st.session_state:
+        st.success(f"Logged in as {st.session_state.user}")
+        if st.button("Logout"):
+            del st.session_state["user"]
+            st.experimental_rerun()
+    else:
+        pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
+        if st.button("Login") and pin:
+            user = verify_pin(pin)
+            if user:
+                st.session_state["user"] = user
+                st.experimental_rerun()
+            else:
+                st.error("Invalid PIN")
 
 if "user" in st.session_state:
     if st.session_state.user == "admin":
