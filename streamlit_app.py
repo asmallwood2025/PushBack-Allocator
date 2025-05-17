@@ -71,23 +71,23 @@ def login_page():
     for i in range(1, 10):
         if cols[(i - 1) % 3].button(str(i), key=f"btn_{i}"):
             handle_digit(str(i))
-            st.experimental_rerun()
+            st.rerun()
 
     if cols[0].button("Clear"):
         clear_pin()
-        st.experimental_rerun()
+        st.rerun()
     if cols[1].button("0", key="btn_0"):
         handle_digit("0")
-        st.experimental_rerun()
+        st.rerun()
 
     if len(pin) == 4:
         if pin == '3320':
             st.session_state.logged_in = True
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Incorrect PIN. Try again.")
             clear_pin()
-            st.experimental_rerun()
+            st.rerun()
 
 # --- Admin Dashboard ---
 def admin_dashboard():
