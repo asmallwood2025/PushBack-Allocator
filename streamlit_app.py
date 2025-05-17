@@ -182,7 +182,7 @@ elif st.session_state.user_type == "admin":
         st.header("📋 Manage Flights")
 
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type="xlsx")
-        if uploaded_file:
+      if uploaded_file:
     try:
         # Read DOM and INT sheets
         df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
