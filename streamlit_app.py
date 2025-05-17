@@ -183,18 +183,39 @@ elif st.session_state.user_type == "admin":
 
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type="xlsx")
         if uploaded_file:
+    try:
+        # Read DOM and INT sheets
+        df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
+        df_int = pd.read_excel(uploaded_file, sheet_name="INT")
+
+        # Combine both sheets
+        combined_df = pd.concat([df_dom, df_int], ignore_index=True)
+
+        for idx, row in combined_df.iterrows():
             try:
-                df_dom = pd.read_excel(uploaded_file, sheet_name="DOM")
-                df_int = pd.read_excel(uploaded_file, sheet_name="INT")
-                combined_df = pd.concat([df_dom, df_int])
-                for _, row in combined_df.iterrows():
-                    flight = str(row.iloc[8])
-                    aircraft = str(row.iloc[9])
-                    std = pd.to_datetime(row.iloc[10], errors='coerce')
-                    if pd.notna(std) and not flight_exists(flight, std.isoformat()):
-                        add_flight(flight, aircraft, std.isoformat())
+                flight_number = str(row["I"]).strip().upper()
+                aircraft = str(row["B"]).strip()
+                std_raw = row["K"]
+
+                if pd.isna(flight_number) or pd.isna(std_raw):
+                    continue  # Skip incomplete rows
+
+                std = pd.to_datetime(std_raw, errors='coerce')
+                if pd.isna(std):
+                    continue
+
+                std_iso = std.isoformat()
+
+                # Add if not already exists
+                if not flight_exists(flight_number, std_iso):
+                    add_flight(flight_number, aircraft, std_iso)
             except Exception as e:
-                st.error(f"❌ Error processing file: {e}")
+                st.warning(f"⚠️ Row {idx+2} skipped due to error: {e}")
+
+        st.success("✅ Flights successfully imported.")
+
+    except Exception as e:
+        st.error(f"❌ Error reading file: {e}")
 
         flights = get_flights()
         if flights:
