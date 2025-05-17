@@ -191,6 +191,43 @@ if st.session_state.get('user_type') == 'admin':
     new_user_passcode = st.text_input("User Passcode", type="password")
     
     if new_user_name and new_user_passcode:
-        if st.button("Add User
+        if st.button("Add User"):
+            try:
+                add_user(new_user_name, new_user_passcode)
+                st.success(f"✅ User {new_user_name} added successfully.")
+            except Exception as e:
+                st.error(f"❌ Error adding user: {e}")
+    
+    st.markdown("### Allocate Flights")
+    flights = get_flights()
+    unallocated = [f for f in flights if f[3] is None]
 
-                    
+    if unallocated:
+        flight_selection = st.selectbox('Select flight to allocate:', [f"{f[1]} (ID: {f[0]})" for f in unallocated])
+        users = get_users()
+        user_selection = st.selectbox('Select user to assign:', [f"{u[1]} (Passcode: {u[2]})" for u in users])
+        
+        if st.button("Allocate Flight"):
+            flight_id = int(flight_selection.split("ID: ")[1].replace(")", ""))
+            user_id = int(user_selection.split(" (")[0])
+            allocate_flight(flight_id, user_id)
+            st.success("✅ Flight allocated.")
+            st.experimental_rerun()
+
+    st.markdown("### Update Flight Status")
+    all_flights = get_flights()
+
+    if all_flights:
+        flight_update = st.selectbox("Choose a flight", [f"{f[1]} (ID: {f[0]}, Status: {f[2]})" for f in all_flights])
+        new_status = st.selectbox("New status", ['unallocated', 'allocated', 'completed', 'delayed'])
+        if st.button("Update Status"):
+            flight_id = int(flight_update.split("ID: ")[1].split(",")[0])
+            update_flight_status(flight_id, new_status)
+            st.success("✅ Flight status updated.")
+            st.experimental_rerun()
+    else:
+        st.info("No flights found.")
+
+# ---------- USER INTERFACE ----------
+elif st.session_state.get('user_type') == 'user':
+    st.title(f"Welcome {st
