@@ -73,6 +73,7 @@ def admin_dashboard():
                             std = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
                         if pd.isna(std):
                             raise ValueError(f"Unrecognized time format: {std_raw}")
+                        std = std.strftime("%Y-%m-%d %H:%M")
                     except Exception as inner_e:
                         raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
