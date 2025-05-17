@@ -54,35 +54,47 @@ def admin_dashboard():
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
         if uploaded_file:
-            df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
-            df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
+            try:
+                df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
+            except Exception:
+                df_int = pd.DataFrame()
+            try:
+                df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
+            except Exception:
+                df_dom = pd.DataFrame()
+
             combined_df = pd.concat([df_int, df_dom], ignore_index=True)
-            created = 0
-            for i, row in combined_df.iterrows():
-                try:
-                    flight = str(row[8]).strip()  # Column I = index 8
-                    aircraft = str(row[1]).strip()  # Column B = index 1
-                    std_raw = str(row[10]).strip()  # Column K = index 10
-
-                    if not flight or not std_raw:
-                        raise ValueError("Missing flight or STD")
-
+            if combined_df.empty:
+                st.error("No valid sheets (INT or DOM) found.")
+            else:
+                created = 0
+                for i, row in combined_df.iterrows():
                     try:
+                        flight = str(row[8]).strip()  # Column I = index 8
+                        aircraft = str(row[1]).strip()  # Column B = index 1
+                        std_raw = str(row[10]).strip()  # Column K = index 10
+
+                        if not flight or not std_raw:
+                            raise ValueError("Missing flight or STD")
+
                         std = pd.to_datetime(std_raw, errors='coerce')
                         if pd.isna(std):
                             std = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
                         if pd.isna(std):
                             raise ValueError(f"Unrecognized time format: {std_raw}")
                         std = std.strftime("%Y-%m-%d %H:%M")
-                    except Exception as inner_e:
-                        raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
-                    c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
-                    created += 1
-                except Exception as e:
-                    st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
-            conn.commit()
-            st.success(f"✅ {created} flight tasks created")
+                        # Check for duplicates
+                        c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
+                        if c.fetchone()[0] == 0:
+                            c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
+                            created += 1
+                        else:
+                            st.info(f"Duplicate skipped: {flight} at {std}")
+                    except Exception as e:
+                        st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
+                conn.commit()
+                st.success(f"✅ {created} flight tasks created")
 
         st.subheader("🛫 Flight Tasks")
         if st.button("❌ Delete All Tasks"):
@@ -97,6 +109,13 @@ def admin_dashboard():
             st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
             cols = st.columns([2, 1, 1])
             assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
+            new_std = cols[0].text_input("New STD", value=t[3], key=f"std_{t[0]}")
+            if new_std != t[3]:
+                try:
+                    new_std_dt = pd.to_datetime(new_std)
+                    c.execute("UPDATE tasks SET std = ? WHERE id = ?", (new_std_dt.strftime("%Y-%m-%d %H:%M"), t[0]))
+                except:
+                    st.error("Invalid date format")
             if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 1 WHERE id = ?", (t[0],))
                 conn.commit()
@@ -149,13 +168,19 @@ def user_dashboard(username):
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 with st.sidebar:
     st.markdown("## 🔐 Sign In")
-    pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
-    if st.button("Login") and pin:
-        user = verify_pin(pin)
-        if user:
-            st.session_state["user"] = user
-        else:
-            st.error("Invalid PIN")
+    if "user" not in st.session_state:
+        pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
+        if st.button("Login") and pin:
+            user = verify_pin(pin)
+            if user:
+                st.session_state["user"] = user
+            else:
+                st.error("Invalid PIN")
+    else:
+        st.success(f"Logged in as: {st.session_state['user']}")
+        if st.button("Logout"):
+            del st.session_state["user"]
+            st.experimental_rerun()
 
 if "user" in st.session_state:
     if st.session_state.user == "admin":
