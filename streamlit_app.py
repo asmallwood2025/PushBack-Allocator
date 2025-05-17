@@ -69,7 +69,6 @@ def get_user_by_passcode(passcode):
 # ---------- STREAMLIT INTERFACE ----------
 st.set_page_config(page_title="Flight Allocator", layout="centered")
 
-# Add the missing triple-quote closure
 st.markdown(
     """
     <style>
@@ -139,7 +138,6 @@ def logout():
 with st.container():
     st.markdown('<div class="landing-container">', unsafe_allow_html=True)
     
-    # Display passcode input with grid layout for numbers 0-9
     keypad_layout = [
         [1, 2, 3],
         [4, 5, 6],
@@ -149,7 +147,7 @@ with st.container():
     
     cols = st.columns(3)
     for i, row in enumerate(keypad_layout):
-        with cols[i % 3]:  # Wrap each row with columns
+        with cols[i % 3]:
             for num in row:
                 st.button(str(num), key=f"btn{num}", on_click=handle_button_click, args=(num,))
     
@@ -181,24 +179,18 @@ if st.session_state.get('user_type') == 'admin':
 
     if uploaded_file is not None:
         try:
-            st.write("Debug: File uploaded.")
             if uploaded_file.name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
             else:
                 df = pd.read_excel(uploaded_file)
 
-            st.write("Debug: File loaded successfully:")
-            st.write(df.head())  # Show the first few rows for debugging
-
-            for flight_number in df.iloc[:, 0]:  # Assuming flight numbers are in the first column
+            for flight_number in df.iloc[:, 0]:  # Assumes flight numbers in first column
                 add_flight(str(flight_number))
             st.success("✅ Flights uploaded successfully.")
 
         except Exception as e:
             st.error(f"Error processing file: {e}")
-            st.write(f"Debug: Error - {e}")
 
-    # Add new user form
     st.markdown("### Add New User")
     new_user_name = st.text_input("User Name")
     new_user_passcode = st.text_input("User Passcode", type="password")
@@ -218,11 +210,11 @@ if st.session_state.get('user_type') == 'admin':
     if unallocated:
         flight_selection = st.selectbox('Select flight to allocate:', [f"{f[1]} (ID: {f[0]})" for f in unallocated])
         users = get_users()
-        user_selection = st.selectbox('Select user to assign:', [f"{u[1]} (Passcode: {u[2]})" for u in users])
+        user_selection = st.selectbox('Select user to assign:', [f"{u[1]} (ID: {u[0]})" for u in users])
         
         if st.button("Allocate Flight"):
             flight_id = int(flight_selection.split("ID: ")[1].replace(")", ""))
-            user_id = int(user_selection.split(" (")[0])
+            user_id = int(user_selection.split("ID: ")[1].replace(")", ""))
             allocate_flight(flight_id, user_id)
             st.success("✅ Flight allocated.")
             st.experimental_rerun()
@@ -241,7 +233,6 @@ if st.session_state.get('user_type') == 'admin':
     else:
         st.info("No flights found.")
     
-    # Log out button
     if st.button('Log out'):
         logout()
 
@@ -251,15 +242,18 @@ elif st.session_state.get('user_type') == 'user':
     st.subheader(f"Hello, {st.session_state.username}, here are your allocated flights.")
 
     flights = get_flights()
-    user_flights = [f for f in flights if f[3] == st.session_state.username]
+    user = get_user_by_passcode(st.session_state.passcode_entered)
+    if user:
+        user_id = user[0]
+        user_flights = [f for f in flights if f[3] == user_id]
 
-    if user_flights:
-        st.markdown("### ✈️ Your Allocated Flights")
-        for f in user_flights:
-            st.write(f"- {f[1]} — Status: {f[2]}")
-    else:
-        st.info("No allocated flights.")
+        if user_flights:
+            st.markdown("### ✈️ Your Allocated Flights")
+            for f in user_flights:
+                st.write(f"- {f[1]} — Status: {f[2]}")
+        else:
+            st.info("No allocated flights.")
     
-    # Log out button
     if st.button('Log out'):
         logout()
+
