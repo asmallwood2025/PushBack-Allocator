@@ -90,7 +90,7 @@ def admin_dashboard():
             conn.commit()
             st.experimental_rerun()
 
-        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY datetime(std)").fetchall()
         users = [row[0] for row in c.execute("SELECT username FROM users WHERE active = 1").fetchall()]
 
         for t in tasks:
@@ -125,7 +125,7 @@ def user_dashboard(username):
 
     with tabs[0]:
         st.header("🛠️ Your Tasks")
-        tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (username,)).fetchall()
+        tasks = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY datetime(std)", (username,)).fetchall()
         for t in tasks:
             col1, col2 = st.columns([4, 1])
             col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
@@ -136,7 +136,7 @@ def user_dashboard(username):
 
     with tabs[1]:
         st.header("📦 Completed Tasks")
-        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY std", (username,)).fetchall()
+        completed = c.execute("SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY datetime(std)", (username,)).fetchall()
         for t in completed:
             col1, col2 = st.columns([4, 1])
             col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
