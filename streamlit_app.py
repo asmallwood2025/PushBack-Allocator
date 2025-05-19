@@ -40,9 +40,8 @@ STATIC_USERS = {
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
-c.execute("DROP TABLE IF EXISTS tasks")
 c.execute('''
-    CREATE TABLE tasks (
+    CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         flight TEXT,
         aircraft TEXT,
@@ -56,6 +55,7 @@ c.execute('''
         completed_at TEXT
     )
 ''')
+
 conn.commit()
 
 
