@@ -5,7 +5,8 @@ import datetime
 import time
 from io import BytesIO
 
-pip install streamlit-extras
+from streamlit_autorefresh import st_autorefresh
+
 
 
 
