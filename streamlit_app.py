@@ -140,203 +140,136 @@ def verify_pin(pin):
     row = c.fetchone()
     return row[0] if row else None
 
-# UI Functions
+import streamlit as st
+import sqlite3
+import pandas as pd
+from datetime import datetime
+
 def admin_dashboard():
-    st.title("👨‍✈️ Admin Dashboard")
-    tabs = st.tabs(["Users", "Shifts", "Flights", "History"])
+    conn = sqlite3.connect("flight_tasks.db", check_same_thread=False)
+    cursor = conn.cursor()
 
-    # USERS TAB
-    with tabs[0]:
-        st.header("👥 Manage Users")
-        for user in STATIC_USERS.keys():
-            current_pin = c.execute("SELECT pin FROM pins WHERE username = ?", (user,)).fetchone()[0]
-            col1, col2, col3 = st.columns([2, 2, 1])
-            col1.write(user)
-            new_pin = col2.text_input("Edit PIN", value=current_pin, max_chars=4, key=f"pin_{user}")
-            if col3.button("Update", key=f"update_{user}"):
-                if len(new_pin) == 4 and new_pin.isdigit():
-                    c.execute("UPDATE pins SET pin = ? WHERE username = ?", (new_pin, user))
-                    conn.commit()
-                    st.success(f"Updated PIN for {user}")
-                else:
-                    st.warning("PIN must be 4 digits")
+    st.sidebar.title("Admin Dashboard")
+    tab = st.sidebar.radio("Select Tab", ["Flights", "Users", "Shifts", "History"])
 
-    # SHIFTS TAB
-    with tabs[1]:
-        st.header("📅 Shift Management")
+    if tab == "Flights":
+        st.header("Flights")
 
-        st.subheader("📥 Import Shifts from Excel")
-        shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
+        # Show current tasks sorted by STD
+        cursor.execute("SELECT id, flight_number, aircraft, std, assigned_user FROM flights ORDER BY std")
+        flights = cursor.fetchall()
+        df = pd.DataFrame(flights, columns=["ID", "Flight Number", "Aircraft", "STD", "Assigned User"])
+        df["STD"] = pd.to_datetime(df["STD"])
+        st.dataframe(df, use_container_width=True)
 
-        if shift_file:
-            try:
-                shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
-                shift_df = shift_df.dropna(subset=["username", "start", "finish"])
-                imported = 0
-
-                for _, row in shift_df.iterrows():
-                    username = str(row["username"]).strip().lower()
-                    start = pd.to_datetime(row["start"]).strftime("%H:%M")
-                    finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
-
-                    if username in STATIC_USERS:
-                        c.execute(
-                            "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
-                            (username, start, finish)
-                        )
-                        imported += 1
-
-                conn.commit()
-                st.success(f"✅ Imported {imported} shifts.")
-            except Exception as e:
-                st.error(f"Failed to import: {e}")
-
-        st.subheader("📝 Manually Edit Shifts")
-        for user in STATIC_USERS:
-            row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
-            start_val = row[0] if row else ""
-            finish_val = row[1] if row else ""
-
-            col1, col2, col3 = st.columns([2, 2, 1])
-            col1.markdown(f"**{user}**")
-            start = col2.text_input("Start", value=start_val, key=f"start_{user}")
-            finish = col3.text_input("Finish", value=finish_val, key=f"finish_{user}")
-
-            if st.button("Update Shift", key=f"update_shift_{user}"):
-                c.execute(
-                    "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
-                    (user, start, finish)
-                )
-                conn.commit()
-                st.success(f"Updated shift for {user}")
-
-
-        if st.button("🗑️ Clear Flight History"):
-            c.execute("DELETE FROM tasks WHERE complete = 1")
-            conn.commit()
-            st.success("✅ Flight history cleared.")
-            st.session_state["task_refresh"] = time.time()
-            st.rerun()
-
-
-    # FLIGHTS TAB
-    with tabs[2]:
-        st.header("📄 Manage Flights")
-        uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
-
-        if uploaded_file:
-            try:
-                df = pd.read_excel(uploaded_file, sheet_name='Push Back', header=None)
-                created = 0
-
-                for i, row in df.iterrows():
-                    try:
-                        flight = str(row[3]).strip()
-                        aircraft = str(row[0]).strip()
-                        aircraft_type = str(row[1]).strip()
-                        destination = str(row[4]).strip()
-                        std_raw = row[5]
-                        etd_raw = row[6]
-
-                        # Validate flight format
-                        if not flight or not any(char.isdigit() for char in flight):
-                            continue
-
-                        def parse_time(val):
-                            if pd.isna(val):
-                                return None
-                            try:
-                                val = int(val)
-                                hours = val // 100
-                                minutes = val % 100
-                                return f"{hours:02d}:{minutes:02d}"
-                            except:
-                                try:
-                                    parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
-                                    if pd.isna(parsed):
-                                        return None
-                                    return parsed.strftime("%H:%M")
-                                except:
-                                    return None
-
-                        std = parse_time(std_raw)
-                        etd = parse_time(etd_raw)
-
-                        if not std:
-                            raise ValueError("Invalid STD format")
-
-                        # Check for duplicates
-                        c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
-                        if c.fetchone()[0] == 0:
-                            c.execute('''
-                                INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            ''', (flight, aircraft, aircraft_type, destination, std, etd))
-                            created += 1
-
-                    except Exception as e:
-                        st.warning(f"⚠️ Row {i+1} skipped: {e}")
-
-                conn.commit()
-                st.success(f"✅ {created} flight tasks created")
-            except Exception as e:
-                st.error(f"❌ Failed to process file: {e}")
-
+        # Delete all tasks
         if st.button("❌ Delete All Tasks"):
-            c.execute("DELETE FROM tasks WHERE complete = 0")
-            conn.commit()
-            st.success("✅ All tasks deleted.")
-            st.session_state["task_refresh"] = time.time()
-
-        users = list(STATIC_USERS.keys())
-        tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
-
-        for t in tasks:
-            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
-            cols = st.columns([2, 1, 1])
-            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
-            if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
-                completed_at = datetime.datetime.now().isoformat()
-                c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
+            st.warning("Are you sure you want to delete all flight tasks?")
+            if st.button("✅ Confirm Delete All"):
+                cursor.execute("DELETE FROM flights")
                 conn.commit()
-                st.rerun()
-            if cols[2].button("Delete", key=f"delete_{t[0]}"):
-                c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
+                st.success("All flight tasks deleted.")
+
+        # Individual delete buttons
+        for _, row in df.iterrows():
+            with st.expander(f"{row['Flight Number']} ({row['STD']})"):
+                if st.button(f"Delete Task {row['ID']}", key=f"delete_{row['ID']}"):
+                    cursor.execute("DELETE FROM flights WHERE id = ?", (row['ID'],))
+                    conn.commit()
+                    st.success(f"Deleted task {row['Flight Number']}")
+
+    elif tab == "Users":
+        st.header("User Management")
+
+        # Display users
+        cursor.execute("SELECT id, name, pin, active FROM users")
+        users = cursor.fetchall()
+        user_df = pd.DataFrame(users, columns=["ID", "Name", "PIN", "Active"])
+        user_df["Active"] = user_df["Active"].apply(lambda x: "✅" if x else "❌")
+        st.dataframe(user_df, use_container_width=True)
+
+        # Add new user
+        st.subheader("Add User")
+        new_name = st.text_input("Name")
+        new_pin = st.text_input("4-digit PIN", max_chars=4)
+        if st.button("➕ Add User"):
+            if new_name and new_pin.isdigit() and len(new_pin) == 4:
+                cursor.execute("INSERT INTO users (name, pin, active) VALUES (?, ?, 1)", (new_name, new_pin))
                 conn.commit()
-                st.rerun()
-            c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
-        conn.commit()
+                st.success(f"User '{new_name}' added.")
+            else:
+                st.error("Please enter a valid name and 4-digit PIN.")
 
-        st.button("🔄 Refresh Flights", on_click=refresh_data)
+        # Edit users
+        st.subheader("Edit Users")
+        for user in users:
+            uid, name, pin, active = user
+            with st.expander(f"Edit: {name}"):
+                new_name = st.text_input(f"Name for {name}", value=name, key=f"name_{uid}")
+                new_pin = st.text_input(f"PIN for {name}", value=str(pin), max_chars=4, key=f"pin_{uid}")
+                new_active = st.checkbox("Active", value=bool(active), key=f"active_{uid}")
+                if st.button(f"💾 Save {name}", key=f"save_{uid}"):
+                    if new_pin.isdigit() and len(new_pin) == 4:
+                        cursor.execute("UPDATE users SET name = ?, pin = ?, active = ? WHERE id = ?",
+                                       (new_name, new_pin, int(new_active), uid))
+                        conn.commit()
+                        st.success(f"Updated user {new_name}.")
+                    else:
+                        st.error("PIN must be a 4-digit number.")
+                if st.button(f"🗑️ Delete {name}", key=f"delete_user_{uid}"):
+                    cursor.execute("DELETE FROM users WHERE id = ?", (uid,))
+                    conn.commit()
+                    st.warning(f"Deleted user {name}.")
 
-        # Use refresh_key as a dummy dependency to re-fetch from DB
-        _ = st.session_state.refresh_key
-        flights = get_all_flights()
-        display_flights(flights)
+    elif tab == "Shifts":
+        st.header("Shifts")
 
-    # HISTORY TAB
-    with tabs[3]:
-        st.header("📦 History")
-        completed = c.execute(
-            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC"
-        ).fetchall()
+        # Display shift status table
+        cursor.execute("SELECT name, shift_start, shift_end, is_on_shift FROM users")
+        user_shifts = cursor.fetchall()
 
-        for t in completed:
-            col1, col2 = st.columns([4, 1])
-            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
-            if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+        if user_shifts:
+            df = pd.DataFrame(user_shifts, columns=["Name", "Shift Start", "Shift End", "On Shift"])
+            df["Shift Start"] = pd.to_datetime(df["Shift Start"])
+            df["Shift End"] = pd.to_datetime(df["Shift End"])
+            df["On Shift"] = df["On Shift"].apply(lambda x: "✅" if x else "❌")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("No users found.")
+
+        st.markdown("### Admin Tools")
+
+        # Clear Shifts Button with Confirmation
+        if st.button("🧹 Clear All Shifts"):
+            st.warning("Are you sure you want to clear **all users'** shift start/end times and reset shift status? This cannot be undone.")
+            if st.button("✅ Confirm Clear Shifts"):
+                cursor.execute("UPDATE users SET shift_start = NULL, shift_end = NULL, is_on_shift = 0")
                 conn.commit()
-                st.rerun()
+                st.success("All shift data cleared successfully.")
 
-        st.button("🔄 Refresh History", on_click=refresh_data)
+    elif tab == "History":
+        st.header("Completed Tasks History")
 
-        if st.button("🗑️ Clear Flight History"):
-            c.execute("DELETE FROM tasks WHERE complete = 1")
-            conn.commit()
-            st.success("✅ Flight history cleared.")
-            st.rerun()
+        cursor.execute("SELECT id, flight_number, aircraft, std, completed_by, completed_at FROM completed_tasks ORDER BY completed_at DESC")
+        history = cursor.fetchall()
+        if history:
+            df = pd.DataFrame(history, columns=["ID", "Flight Number", "Aircraft", "STD", "Completed By", "Completed At"])
+            df["STD"] = pd.to_datetime(df["STD"])
+            df["Completed At"] = pd.to_datetime(df["Completed At"])
+            st.dataframe(df, use_container_width=True)
+
+            for _, row in df.iterrows():
+                with st.expander(f"{row['Flight Number']} completed by {row['Completed By']} at {row['Completed At']}"):
+                    if st.button(f"↩️ Mark Incomplete {row['ID']}", key=f"undo_{row['ID']}"):
+                        cursor.execute("INSERT INTO flights (flight_number, aircraft, std, assigned_user) VALUES (?, ?, ?, ?)",
+                                       (row["Flight Number"], row["Aircraft"], row["STD"], row["Completed By"]))
+                        cursor.execute("DELETE FROM completed_tasks WHERE id = ?", (row["ID"],))
+                        conn.commit()
+                        st.success(f"Task {row['Flight Number']} moved back to active flights.")
+        else:
+            st.info("No completed tasks found.")
+
+    conn.close()
 
 def user_dashboard(username):
     from datetime import datetime
