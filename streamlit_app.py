@@ -46,7 +46,21 @@ conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
 c.execute('''CREATE TABLE IF NOT EXISTS pins (username TEXT PRIMARY KEY, pin TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, flight TEXT, aircraft TEXT, std TEXT, assigned_to TEXT, complete INTEGER DEFAULT 0, notes TEXT, completed_at TEXT)''')
+c.execute('''
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flight TEXT,
+        aircraft TEXT,
+        aircraft_type TEXT,
+        destination TEXT,
+        std TEXT,
+        etd TEXT,
+        assigned_to TEXT,
+        complete INTEGER DEFAULT 0,
+        notes TEXT,
+        completed_at TEXT
+    )
+''')
 conn.commit()
 
 # Initialize PINs table with static users
@@ -86,62 +100,62 @@ def admin_dashboard():
         st.header("📄 Manage Flights")
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
-if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
-        created = 0
-
-        for i, row in df.iterrows():
+        if uploaded_file:
             try:
-                flight = str(row[3]).strip()
-                aircraft = str(row[0]).strip()
-                aircraft_type = str(row[1]).strip()
-                destination = str(row[4]).strip()
-                std_raw = row[5]
-                etd_raw = row[6]
+                df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
+                created = 0
 
-                if not flight.startswith("QF") or not flight:
-                    continue
-
-                def parse_time(val):
-                    if pd.isna(val):
-                        return None
+                for i, row in df.iterrows():
                     try:
-                        val = int(val)
-                        hours = val // 100
-                        minutes = val % 100
-                        return f"{hours:02d}:{minutes:02d}"
-                    except:
-                        try:
-                            parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
-                            if pd.isna(parsed):
+                        flight = str(row[3]).strip()
+                        aircraft = str(row[0]).strip()
+                        aircraft_type = str(row[1]).strip()
+                        destination = str(row[4]).strip()
+                        std_raw = row[5]
+                        etd_raw = row[6]
+
+                        if not flight.startswith("QF") or not flight:
+                            continue
+
+                        def parse_time(val):
+                            if pd.isna(val):
                                 return None
-                            return parsed.strftime("%H:%M")
-                        except:
-                            return None
+                            try:
+                                val = int(val)
+                                hours = val // 100
+                                minutes = val % 100
+                                return f"{hours:02d}:{minutes:02d}"
+                            except:
+                                try:
+                                    parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
+                                    if pd.isna(parsed):
+                                        return None
+                                    return parsed.strftime("%H:%M")
+                                except:
+                                    return None
 
-                std = parse_time(std_raw)
-                etd = parse_time(etd_raw)
+                        std = parse_time(std_raw)
+                        etd = parse_time(etd_raw)
 
-                if not std:
-                    raise ValueError("Invalid STD format")
+                        if not std:
+                            raise ValueError("Invalid STD format")
 
-                # Avoid duplicates
-                c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
-                if c.fetchone()[0] == 0:
-                    c.execute('''
-                        INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (flight, aircraft, aircraft_type, destination, std, etd))
-                    created += 1
+                        # Avoid duplicates
+                        c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
+                        if c.fetchone()[0] == 0:
+                            c.execute('''
+                                INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                            created += 1
 
+                    except Exception as e:
+                        st.warning(f"⚠️ Row {i+1} skipped: {e}")
+
+                conn.commit()
+                st.success(f"✅ {created} flight tasks created")
             except Exception as e:
-                st.warning(f"⚠️ Row {i+1} skipped: {e}")
-
-        conn.commit()
-        st.success(f"✅ {created} flight tasks created")
-    except Exception as e:
-        st.error(f"❌ Failed to process file: {e}")
+                st.error(f"❌ Failed to process file: {e}")
 
         st.subheader("🛫 Flight Tasks")
         if st.button("❌ Delete All Tasks"):
