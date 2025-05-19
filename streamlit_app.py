@@ -416,7 +416,6 @@ def admin_dashboard():
          for t in tasks:
              st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
              cols = st.columns([2, 1, 1])
-             auto_allocate_tasks()
              assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
              if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
                  completed_at = datetime.now().isoformat()
@@ -436,6 +435,8 @@ def admin_dashboard():
          _ = st.session_state.refresh_key
          flights = get_all_flights()
          display_flights(flights)
+
+    auto_allocate_tasks()
  
     # HISTORY TAB
     with tabs[3]:
