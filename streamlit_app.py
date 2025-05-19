@@ -254,7 +254,7 @@ from datetime import datetime
 # UI Functions
 def admin_dashboard():
 
-    auto_allocate_tasks()
+    
 
 
     # Auto-refresh every 15 seconds unless user manually triggers
@@ -416,6 +416,7 @@ def admin_dashboard():
          for t in tasks:
              st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
              cols = st.columns([2, 1, 1])
+             auto_allocate_tasks()
              assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
              if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
                  completed_at = datetime.now().isoformat()
