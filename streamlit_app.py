@@ -348,14 +348,12 @@ def user_dashboard(username):
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
-    # Trigger manual refresh
+    # Define refresh function
     def refresh_data():
         st.session_state.refresh_key += 1
         st.rerun()
 
-    st.button("🔄 Refresh My Tasks", on_click=refresh_data)
-
-    _ = st.session_state.refresh_key  # Trigger re-execution when key changes
+    _ = st.session_state.refresh_key  # Trigger re-execution when refresh_key changes
 
     # Load assigned, upcoming, and history tasks
     current_task = get_current_task_for_user(username)
@@ -380,6 +378,7 @@ def user_dashboard(username):
 
     with tabs[0]:
         st.header("🛠️ Your Tasks")
+        st.button("🔄 Refresh My Tasks", on_click=refresh_data)
 
         tasks = c.execute(
             "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
@@ -451,7 +450,6 @@ def user_dashboard(username):
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
-
 
 # App Entry
 with st.sidebar:
