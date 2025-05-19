@@ -6,6 +6,10 @@ import time
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 
+from streamlit_autorefresh import st_autorefresh
+import datetime
+
+st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 
 
 
