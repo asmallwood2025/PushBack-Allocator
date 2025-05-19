@@ -5,10 +5,8 @@ import datetime
 import time
 from io import BytesIO
 
-# ✅ Must be the first Streamlit command
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
-# Fixed Users
 STATIC_USERS = {
     "Adam": "0001",
     "Samuel C": "0002",
@@ -41,20 +39,28 @@ STATIC_USERS = {
     "Costa": "0028"
 }
 
-# DB Setup
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
 c.execute('''CREATE TABLE IF NOT EXISTS pins (username TEXT PRIMARY KEY, pin TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, flight TEXT, aircraft TEXT, std TEXT, assigned_to TEXT, complete INTEGER DEFAULT 0, notes TEXT, completed_at TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    flight TEXT,
+    aircraft TEXT,
+    destination TEXT,
+    std TEXT,
+    etd TEXT,
+    assigned_to TEXT,
+    complete INTEGER DEFAULT 0,
+    notes TEXT,
+    completed_at TEXT
+)''')
 conn.commit()
 
-# Initialize PINs table with static users
 for user, pin in STATIC_USERS.items():
     c.execute("INSERT OR IGNORE INTO pins (username, pin) VALUES (?, ?)", (user, pin))
 conn.commit()
 
-# Auth Functions
 def verify_pin(pin):
     if pin == "3320":
         return "admin"
@@ -62,7 +68,6 @@ def verify_pin(pin):
     row = c.fetchone()
     return row[0] if row else None
 
-# UI Functions
 def admin_dashboard():
     st.title("👨‍✈️ Admin Dashboard")
     tabs = st.tabs(["Users", "Flights", "History"])
@@ -87,43 +92,42 @@ def admin_dashboard():
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
         if uploaded_file:
-            df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
-            df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
-            combined_df = pd.concat([df_int, df_dom], ignore_index=True)
+            df = pd.read_excel(uploaded_file, header=None)
             created = 0
-            for i, row in combined_df.iterrows():
+            for i, row in df.iterrows():
                 try:
-                    flight = str(row[8]).strip()
-                    if not flight.startswith("QF"):
+                    aircraft = str(row[1]).strip()
+                    flight = str(row[3]).strip()
+                    destination = str(row[4]).strip()
+                    std_raw = row[5]
+                    etd_raw = row[6]
+
+                    if not flight.startswith("QF") or pd.isna(std_raw):
                         continue
 
-                    aircraft = str(row[1]).strip()
-                    std_raw = row[10]
-
-                    if not flight or pd.isna(std_raw):
-                        raise ValueError("Missing flight or STD")
-
-                    try:
-                        if isinstance(std_raw, (int, float)):
-                            total_seconds = int(std_raw * 24 * 60 * 60)
+                    def format_time(val):
+                        if isinstance(val, (int, float)):
+                            total_seconds = int(val * 24 * 60 * 60)
                             hours = total_seconds // 3600
                             minutes = (total_seconds % 3600) // 60
-                            std = f"{hours:02d}:{minutes:02d}"
-                        elif isinstance(std_raw, str):
-                            parsed = pd.to_datetime(std_raw, errors='coerce')
+                            return f"{hours:02d}:{minutes:02d}"
+                        elif isinstance(val, str):
+                            parsed = pd.to_datetime(val, errors='coerce')
                             if pd.isna(parsed):
-                                parsed = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
+                                parsed = pd.to_datetime(val, format="%H%M", errors='coerce')
                             if pd.isna(parsed):
-                                raise ValueError(f"Unrecognized string format for STD: {std_raw}")
-                            std = parsed.strftime("%H:%M")
+                                raise ValueError(f"Unrecognized time format: {val}")
+                            return parsed.strftime("%H:%M")
                         else:
-                            raise ValueError(f"Unsupported STD type: {type(std_raw)}")
-                    except Exception as inner_e:
-                        raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
+                            raise ValueError("Unsupported time format")
+
+                    std = format_time(std_raw)
+                    etd = format_time(etd_raw) if not pd.isna(etd_raw) else None
 
                     c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
                     if c.fetchone()[0] == 0:
-                        c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
+                        c.execute("INSERT INTO tasks (flight, aircraft, destination, std, etd) VALUES (?, ?, ?, ?, ?)",
+                                  (flight, aircraft, destination, std, etd))
                         created += 1
                 except Exception as e:
                     st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
@@ -136,13 +140,13 @@ def admin_dashboard():
             conn.commit()
             st.rerun()
 
-        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        tasks = c.execute("SELECT id, flight, aircraft, destination, std, etd, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
         users = list(STATIC_USERS.keys())
 
         for t in tasks:
-            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            st.markdown(f"**{t[1]}** | A/C: {t[2]} | To: {t[3]} | STD: {t[4]} | ETD: {t[5]}")
             cols = st.columns([2, 1, 1])
-            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
+            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[6]) if t[6] in users else 0)
             if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
                 completed_at = datetime.datetime.now().isoformat()
                 c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
@@ -157,11 +161,11 @@ def admin_dashboard():
 
     with tabs[2]:
         st.header("📦 History")
-        completed = c.execute("SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC").fetchall()
+        completed = c.execute("SELECT id, flight, aircraft, destination, std, etd, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC").fetchall()
         for t in completed:
             col1, col2 = st.columns([4, 1])
-            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
+            date_str = pd.to_datetime(t[6]).strftime('%Y-%m-%d %H:%M') if t[6] else 'N/A'
+            col1.markdown(f"**{t[1]}** | A/C: {t[2]} | To: {t[3]} | STD: {t[4]} | ETD: {t[5]} | Completed: {date_str}")
             if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
@@ -196,13 +200,13 @@ def user_dashboard(username):
         st.header("🛠️ Your Tasks")
 
         tasks = c.execute(
-            "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
+            "SELECT id, flight, aircraft, destination, std, etd FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
             (username,)
         ).fetchall()
 
         if tasks:
             current = tasks[0]
-            color = get_status_color(current[3])
+            color = get_status_color(current[4])
             st.markdown("### 🟢 **Current Task**")
             with st.container():
                 st.markdown(
@@ -210,7 +214,9 @@ def user_dashboard(username):
                     <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
                         <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
                         <p><strong>Aircraft:</strong> {current[2]}</p>
-                        <p><strong>STD:</strong> {current[3]}</p>
+                        <p><strong>Destination:</strong> {current[3]}</p>
+                        <p><strong>STD:</strong> {current[4]}</p>
+                        <p><strong>ETD:</strong> {current[5]}</p>
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -223,7 +229,7 @@ def user_dashboard(username):
 
             if len(tasks) > 1:
                 next_task = tasks[1]
-                color = get_status_color(next_task[3])
+                color = get_status_color(next_task[4])
                 st.markdown("### 🟡 **Next Task**")
                 with st.container():
                     st.markdown(
@@ -231,7 +237,9 @@ def user_dashboard(username):
                         <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
                             <h3 style='margin-bottom: 10px;'>✈️ {next_task[1]}</h3>
                             <p><strong>Aircraft:</strong> {next_task[2]}</p>
-                            <p><strong>STD:</strong> {next_task[3]}</p>
+                            <p><strong>Destination:</strong> {next_task[3]}</p>
+                            <p><strong>STD:</strong> {next_task[4]}</p>
+                            <p><strong>ETD:</strong> {next_task[5]}</p>
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -243,7 +251,7 @@ def user_dashboard(username):
             with st.expander("📋 View Future Tasks"):
                 for t in tasks[2:]:
                     col1, col2 = st.columns([4, 1])
-                    col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
+                    col1.markdown(f"**{t[1]}** | A/C: {t[2]} | To: {t[3]} | STD: {t[4]} | ETD: {t[5]}")
                     if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
                         completed_at = datetime.now().isoformat()
                         c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
@@ -253,19 +261,18 @@ def user_dashboard(username):
     with tabs[1]:
         st.header("📦 Completed Tasks")
         completed = c.execute(
-            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
+            "SELECT id, flight, aircraft, destination, std, etd, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
             (username,)
         ).fetchall()
         for t in completed:
             col1, col2 = st.columns([4, 1])
-            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-            col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]} | Completed: {date_str}")
+            date_str = pd.to_datetime(t[6]).strftime('%Y-%m-%d %H:%M') if t[6] else 'N/A'
+            col1.markdown(f"**{t[1]}** | A/C: {t[2]} | To: {t[3]} | STD: {t[4]} | ETD: {t[5]} | Completed: {date_str}")
             if col2.button("🔁 Reactivate", key=f"reactivate_{t[0]}"):
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
 
-# App Entry
 with st.sidebar:
     st.markdown("## 🔐 Sign In")
     pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
