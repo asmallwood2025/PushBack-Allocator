@@ -115,7 +115,7 @@ def auto_allocate_tasks():
         return
 
     # Get all active users with shifts
-    c.execute("SELECT u.id, u.name, s.shift_start, s.shift_end, u.current_task_id FROM users u JOIN shifts s ON u.name = s.username WHERE u.is_active = 1")
+    c.execute("SELECT u.id, u.name, shift_start, shift_end, u.current_task_id FROM users u JOIN shifts s ON u.name = s.username WHERE u.is_active = 1")
     users = c.fetchall()
     if not users:
         st.write("No active users with shifts.")
