@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import datetime
+from datetime import datetime
 import time
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
