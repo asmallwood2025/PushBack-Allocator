@@ -609,8 +609,8 @@ def user_dashboard(username):
         if len(tasks) > 2:
             with st.expander("📋 View Future Tasks"):
                 for t in tasks[2:]:
-                    col1, col2 = st.columns([4, 1])
-                    col1.markdown(f"**{t[1]}** | Aircraft Registration: {t[2]} | Aircraft Type: {t[2]} | STD: {t[3]}")
+                    col1, col2 = st.columns([5, 1])
+                    col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | Aircraft Type: {t[3]} | STD: {t[4]} | ETD: {t[5]}")
                     if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
                         completed_at = datetime.now().isoformat()
                         c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
