@@ -213,7 +213,16 @@ c.execute("""
         status TEXT
     )
 """)
-conn.commit()
+
+c.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        is_active INTEGER DEFAULT 1,
+        current_task_id INTEGER
+    )
+''')
+
 
 
 conn.commit()
