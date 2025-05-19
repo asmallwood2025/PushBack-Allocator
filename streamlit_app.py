@@ -214,14 +214,19 @@ c.execute("""
     )
 """)
 
+# Create users table (if not exists) to support auto-allocation
 c.execute('''
     CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
         is_active INTEGER DEFAULT 1,
+        shift_start TEXT,
+        shift_end TEXT,
         current_task_id INTEGER
     )
 ''')
+conn.commit()
+
 
 
 
