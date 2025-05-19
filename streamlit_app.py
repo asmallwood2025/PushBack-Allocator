@@ -58,6 +58,83 @@ def display_flights(flights):
             f"**Flight:** {t[1]} | Aircraft: {t[2]} | Type: {t[3]} | Dest: {t[4]} | STD: {t[5]} | ETD: {t[6]} | Assigned To: {t[7]}"
         )
 
+def get_pending_tasks():
+    cursor.execute("""
+        SELECT id, flight_number, ac_type, etd, std, assigned_user_id
+        FROM flights
+        WHERE status = 'pending' AND assigned_user_id IS NULL
+        ORDER BY COALESCE(etd, std) ASC
+    """)
+    return cursor.fetchall()
+
+def get_active_users():
+    cursor.execute("""
+        SELECT id, name, shift_start, shift_end, current_task_id
+        FROM users
+        WHERE is_active = 1
+    """)
+    return cursor.fetchall()
+
+def get_task_by_id(task_id):
+    if not task_id:
+        return None
+    cursor.execute("""
+        SELECT id, ac_type, etd, std
+        FROM flights
+        WHERE id = ?
+    """, (task_id,))
+    return cursor.fetchone()
+
+def within_shift(start, end, etd):
+    buffer = datetime.timedelta(minutes=20)
+    return (start - buffer) <= etd <= (end + buffer)
+
+def get_task_time(task):
+    return task['etd'] if task['etd'] else task['std']
+
+def assign_task(task_id, user_id):
+    cursor.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
+    cursor.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
+    conn.commit()
+
+def is_task_overdue(task_time, now):
+    return task_time < now
+
+
+def auto_allocate_tasks():
+    now = datetime.datetime.now()
+    tasks = get_pending_tasks()
+    users = get_active_users()
+
+    for task in tasks:
+        task_time = task['etd'] or task['std']
+        if task_time is None:
+            continue
+
+        best_user = None
+        best_score = -1
+
+        for user in users:
+            shift_start, shift_end = user['shift_start'], user['shift_end']
+            if not within_shift(shift_start, shift_end, task_time):
+                continue
+
+            last_task = get_task_by_id(user['current_task_id'])
+            last_task_time = get_task_time(last_task) if last_task else None
+            travel_time = (task_time - last_task_time).total_seconds() / 60 if last_task_time else 999
+
+            if last_task_time and is_task_overdue(last_task_time, now) and travel_time < 15:
+                continue
+
+            ac_switch = 1 if last_task and last_task['ac_type'] != task['ac_type'] else 0
+            score = travel_time - (ac_switch * 10)
+
+            if score > best_score:
+                best_score = score
+                best_user = user
+
+        if best_user:
+            assign_task(task['id'], best_user['id'])
 
 
 # Fixed Users
@@ -147,6 +224,9 @@ from datetime import datetime
 
 # UI Functions
 def admin_dashboard():
+
+    auto_allocate_tasks()
+
 
     # Auto-refresh every 15 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
