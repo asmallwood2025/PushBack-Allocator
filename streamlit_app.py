@@ -105,43 +105,90 @@ def is_task_overdue(task_time, now):
 
 def auto_allocate_tasks():
     now = datetime.now()
-    tasks = get_pending_tasks()
-    users = get_active_users()
+    c = conn.cursor()
 
-    for task in tasks:
-        task_time = task[3] or task[4]  # Use ETD if available, otherwise STD
-        if task_time is None:
+    # Get all pending and unassigned tasks
+    c.execute("SELECT * FROM flights WHERE status = 'pending' AND assigned_user_id IS NULL")
+    pending_tasks = c.fetchall()
+    if not pending_tasks:
+        st.write("No pending unassigned tasks.")
+        return
+
+    # Get all active users with shifts
+    c.execute("SELECT u.id, u.name, s.shift_start, s.shift_end, u.current_task_id FROM users u JOIN shifts s ON u.name = s.username WHERE u.is_active = 1")
+    users = c.fetchall()
+    if not users:
+        st.write("No active users with shifts.")
+        return
+
+    for task in pending_tasks:
+        task_id = task[0]
+        flight_number = task[1]
+        aircraft = task[2]
+        etd = task[3]
+        std = task[4]
+        task_time_str = etd or std
+
+        if not task_time_str:
+            st.write(f"Skipping task {task_id}: No ETD/STD")
+            continue
+
+        # Convert to datetime
+        try:
+            task_time = datetime.strptime(task_time_str, "%H:%M").replace(
+                year=now.year, month=now.month, day=now.day)
+        except ValueError:
+            st.write(f"Skipping task {task_id}: Invalid time format: {task_time_str}")
             continue
 
         best_user = None
-        best_score = -1
+        best_score = float('inf')
+
+        st.write(f"Evaluating task {task_id} @ {task_time.strftime('%H:%M')}")
 
         for user in users:
-            shift_start_str, shift_end_str = user['shift_start'], user['shift_end']
-            shift_start = datetime.strptime(shift_start_str, "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day)
-            shift_end = datetime.strptime(shift_end_str, "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day)
+            user_id, username, shift_start, shift_end, current_task_id = user
 
+            # Check shift boundaries (with 20 min buffer)
             if not within_shift(shift_start, shift_end, task_time):
+                st.write(f"- Skipping {username}: task outside shift bounds.")
                 continue
 
-            last_task = get_task_by_id(user['current_task_id'])
-            last_task_time = get_task_time(last_task) if last_task else None
-            travel_time = (task_time - last_task_time).total_seconds() / 60 if last_task_time else 999
+            score = 0
 
-            if last_task_time and is_task_overdue(last_task_time, now) and travel_time < 15:
-                continue
+            # Calculate travel time from user's current task
+            if current_task_id:
+                c.execute("SELECT etd, std, aircraft FROM flights WHERE id = ?", (current_task_id,))
+                last_task = c.fetchone()
+                if last_task:
+                    last_time_str = last_task[0] or last_task[1]
+                    last_aircraft = last_task[2]
 
-            ac_switch = 1 if last_task and last_task['ac_type'] != task['ac_type'] else 0
-            score = travel_time - (ac_switch * 10)
+                    try:
+                        last_time = datetime.strptime(last_time_str, "%H:%M").replace(
+                            year=now.year, month=now.month, day=now.day)
+                        travel_time = (task_time - last_time).total_seconds() / 60
+                        score -= travel_time  # maximize travel time
+                        if last_aircraft != aircraft:
+                            score += 10  # aircraft switch penalty
+                    except Exception as e:
+                        st.write(f"Error parsing last task time for {username}: {e}")
+                        continue
 
-            if score > best_score:
+            if score < best_score:
                 best_score = score
                 best_user = user
 
         if best_user:
-            assign_task(task['id'], best_user['id'])
+            user_id = best_user[0]
+            username = best_user[1]
+            st.write(f"✔ Assigning task {task_id} to {username} (score {best_score:.1f})")
+
+            c.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
+            c.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
+            conn.commit()
+        else:
+            st.write(f"No suitable user found for task {task_id}")
 
 # Fixed Users
 STATIC_USERS = {
