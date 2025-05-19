@@ -21,6 +21,26 @@ if "refresh_key" not in st.session_state:
 def refresh_data():
     st.session_state.refresh_key += 1
 
+def get_current_task_for_user(username):
+    result = c.execute(
+        "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std LIMIT 1",
+        (username,)
+    ).fetchone()
+    return result
+
+def get_future_tasks_for_user(username):
+    result = c.execute(
+        "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std OFFSET 1",
+        (username,)
+    ).fetchall()
+    return result
+
+def get_completed_tasks_for_user(username):
+    result = c.execute(
+        "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
+        (username,)
+    ).fetchall()
+    return result
 
 
 # Fixed Users
