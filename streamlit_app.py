@@ -9,7 +9,6 @@ from streamlit_autorefresh import st_autorefresh
 from streamlit_autorefresh import st_autorefresh
 import datetime
 
-st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 
 
 
@@ -19,6 +18,7 @@ st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 # ✅ Must be the first Streamlit command
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
+st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 
 
 
