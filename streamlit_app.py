@@ -106,7 +106,7 @@ def auto_allocate_tasks():
     users = get_active_users()
 
     for task in tasks:
-        task_time = task['etd'] or task['std']
+        task_time = task[3] or task[4]
         if task_time is None:
             continue
 
