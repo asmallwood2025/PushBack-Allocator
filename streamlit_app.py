@@ -66,7 +66,7 @@ def get_pending_tasks():
         WHERE status = 'pending' AND assigned_user_id IS NULL
         ORDER BY COALESCE(etd, std) ASC
     """)
-    return cursor.fetchall()
+    return c.fetchall()
 
 def get_active_users():
     c.execute("""
@@ -74,7 +74,7 @@ def get_active_users():
         FROM users
         WHERE is_active = 1
     """)
-    return cursor.fetchall()
+    return c.fetchall()
 
 def get_task_by_id(task_id):
     if not task_id:
@@ -84,7 +84,7 @@ def get_task_by_id(task_id):
         FROM flights
         WHERE id = ?
     """, (task_id,))
-    return cursor.fetchone()
+    return c.fetchone()
 
 def within_shift(start, end, etd):
     buffer = datetime.timedelta(minutes=20)
