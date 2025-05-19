@@ -4,7 +4,8 @@ import pandas as pd
 import datetime
 import time
 from io import BytesIO
-import streamlit_autorefresh
+from streamlit_extras.autorefresh import st_autorefresh
+
 
 
 
