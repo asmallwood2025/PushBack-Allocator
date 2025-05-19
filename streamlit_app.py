@@ -108,7 +108,7 @@ def auto_allocate_tasks():
     users = get_active_users()
 
     for task in tasks:
-        task_time = task[3] or task[4]
+        task_time = task[3] or task[4]  # Use ETD if available, otherwise STD
         if task_time is None:
             continue
 
@@ -116,7 +116,12 @@ def auto_allocate_tasks():
         best_score = -1
 
         for user in users:
-            shift_start, shift_end = user['shift_start'], user['shift_end']
+            shift_start_str, shift_end_str = user['shift_start'], user['shift_end']
+            shift_start = datetime.strptime(shift_start_str, "%H:%M").replace(
+                year=now.year, month=now.month, day=now.day)
+            shift_end = datetime.strptime(shift_end_str, "%H:%M").replace(
+                year=now.year, month=now.month, day=now.day)
+
             if not within_shift(shift_start, shift_end, task_time):
                 continue
 
@@ -136,7 +141,6 @@ def auto_allocate_tasks():
 
         if best_user:
             assign_task(task['id'], best_user['id'])
-
 
 # Fixed Users
 STATIC_USERS = {
