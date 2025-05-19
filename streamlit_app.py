@@ -6,13 +6,6 @@ import time
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
 
-from streamlit_autorefresh import st_autorefresh
-import datetime
-
-
-
-
-
 
 
 # ✅ Must be the first Streamlit command
