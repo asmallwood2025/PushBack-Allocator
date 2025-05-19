@@ -12,6 +12,7 @@ import datetime
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
 st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
+auto_allocate_tasks()
 
 # DB Setup
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
@@ -391,9 +392,9 @@ def admin_dashboard():
                          c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
                          if c.fetchone()[0] == 0:
                              c.execute('''
-                                 INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
-                                 VALUES (?, ?, ?, ?, ?, ?)
-                             ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                                 INSERT INTO flights (flight_number, ac_type, etd, std, status)
+                                 VALUES (?, ?, ?, ?, 'pending')
+                             ''', (flight, aircraft_type, etd, std))
                              created += 1
  
                      except Exception as e:
@@ -436,7 +437,7 @@ def admin_dashboard():
          flights = get_all_flights()
          display_flights(flights)
 
-    auto_allocate_tasks()
+    
  
     # HISTORY TAB
     with tabs[3]:
