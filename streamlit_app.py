@@ -91,74 +91,79 @@ def verify_pin(pin):
 # UI Functions
 def admin_dashboard():
     st.title("👨‍✈️ Admin Dashboard")
-    tabs = st.tabs(["Users", "Flights", "History"])
+   tabs = st.tabs(["Users", "Shifts", "Flights", "History"])
 
-    with tabs[0]:
-        st.header("👥 Manage Users")
-        for user in STATIC_USERS.keys():
-            current_pin = c.execute("SELECT pin FROM pins WHERE username = ?", (user,)).fetchone()[0]
-            col1, col2, col3 = st.columns([2, 2, 1])
-            col1.write(user)
-            new_pin = col2.text_input("Edit PIN", value=current_pin, max_chars=4, key=f"pin_{user}")
-            if col3.button("Update", key=f"update_{user}"):
-                if len(new_pin) == 4 and new_pin.isdigit():
-                    c.execute("UPDATE pins SET pin = ? WHERE username = ?", (new_pin, user))
-                    conn.commit()
-                    st.success(f"Updated PIN for {user}")
-                else:
-                    st.warning("PIN must be 4 digits")
-
-        st.subheader("📅 Import Shifts by Day")
-        shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
-
-        if shift_file:
-            try:
-                shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
-                shift_df = shift_df.dropna(subset=["username", "start", "finish"])
-                imported = 0
-
-                for _, row in shift_df.iterrows():
-                    username = str(row["username"]).strip().lower()
-                    start = pd.to_datetime(row["start"]).strftime("%H:%M")
-                    finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
-
-                    if username in STATIC_USERS:
-                        c.execute(
-                            "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
-                            (username, start, finish)
-                        )
-                        imported += 1
-
+# USERS TAB
+with tabs[0]:
+    st.header("👥 Manage Users")
+    for user in STATIC_USERS.keys():
+        current_pin = c.execute("SELECT pin FROM pins WHERE username = ?", (user,)).fetchone()[0]
+        col1, col2, col3 = st.columns([2, 2, 1])
+        col1.write(user)
+        new_pin = col2.text_input("Edit PIN", value=current_pin, max_chars=4, key=f"pin_{user}")
+        if col3.button("Update", key=f"update_{user}"):
+            if len(new_pin) == 4 and new_pin.isdigit():
+                c.execute("UPDATE pins SET pin = ? WHERE username = ?", (new_pin, user))
                 conn.commit()
-                st.success(f"✅ Imported {imported} shifts.")
-            except Exception as e:
-                st.error(f"Failed to import: {e}")
+                st.success(f"Updated PIN for {user}")
+            else:
+                st.warning("PIN must be 4 digits")
 
-        st.subheader("📝 Manually Edit Shifts")
-        for user in STATIC_USERS:
-            row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
-            start_val = row[0] if row else ""
-            finish_val = row[1] if row else ""
+# SHIFTS TAB
+with tabs[1]:
+    st.header("📅 Shift Management")
 
-            col1, col2, col3 = st.columns([2, 2, 1])
-            col1.markdown(f"**{user}**")
-            start = col2.text_input("Start", value=start_val, key=f"start_{user}")
-            finish = col3.text_input("Finish", value=finish_val, key=f"finish_{user}")
+    st.subheader("📥 Import Shifts from Excel")
+    shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
 
-            if st.button("Update Shift", key=f"update_shift_{user}"):
-                c.execute(
-                    "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
-                    (user, start, finish)
-                )
-                conn.commit()
-                st.success(f"Updated shift for {user}")
+    if shift_file:
+        try:
+            shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
+            shift_df = shift_df.dropna(subset=["username", "start", "finish"])
+            imported = 0
 
-        if st.button("🗑 Clear All Shifts"):
-            c.execute("DELETE FROM shifts")
+            for _, row in shift_df.iterrows():
+                username = str(row["username"]).strip().lower()
+                start = pd.to_datetime(row["start"]).strftime("%H:%M")
+                finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
+
+                if username in STATIC_USERS:
+                    c.execute(
+                        "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
+                        (username, start, finish)
+                    )
+                    imported += 1
+
             conn.commit()
-            st.success("✅ All shifts cleared.")
+            st.success(f"✅ Imported {imported} shifts.")
+        except Exception as e:
+            st.error(f"Failed to import: {e}")
 
-    with tabs[1]:
+    st.subheader("📝 Manually Edit Shifts")
+    for user in STATIC_USERS:
+        row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
+        start_val = row[0] if row else ""
+        finish_val = row[1] if row else ""
+
+        col1, col2, col3 = st.columns([2, 2, 1])
+        col1.markdown(f"**{user}**")
+        start = col2.text_input("Start", value=start_val, key=f"start_{user}")
+        finish = col3.text_input("Finish", value=finish_val, key=f"finish_{user}")
+
+        if st.button("Update Shift", key=f"update_shift_{user}"):
+            c.execute(
+                "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
+                (user, start, finish)
+            )
+            conn.commit()
+            st.success(f"Updated shift for {user}")
+
+    if st.button("🗑 Clear All Shifts"):
+        c.execute("DELETE FROM shifts")
+        conn.commit()
+        st.success("✅ All shifts cleared.")
+
+    with tabs[2]:
         st.header("📄 Manage Flights")
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
@@ -249,7 +254,7 @@ def admin_dashboard():
             c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
         conn.commit()
 
-    with tabs[2]:
+    with tabs[3]:
         st.header("📦 History")
         completed = c.execute("SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC").fetchall()
         for t in completed:
