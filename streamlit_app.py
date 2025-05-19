@@ -5,7 +5,7 @@ import datetime
 import time
 from io import BytesIO
 
-import streamlit-extras
+import streamlit_extras
 
 
 
