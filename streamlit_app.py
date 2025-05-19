@@ -297,7 +297,7 @@ def admin_dashboard():
             cols = st.columns([2, 1, 1])
             assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
             if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
-                completed_at = datetime.datetime.now().isoformat()
+                completed_at = datetime.now().isoformat())
                 c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
                 conn.commit()
                 st.rerun()
