@@ -190,13 +190,6 @@ c.execute('''
     )
 ''')
 
-c.execute('''
-    CREATE TABLE IF NOT EXISTS shifts (
-        username TEXT PRIMARY KEY,
-        start TEXT,
-        finish TEXT
-    )
-''')
 
 c.execute('''
     CREATE TABLE IF NOT EXISTS pins (
