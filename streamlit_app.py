@@ -391,6 +391,10 @@ def admin_dashboard():
                          c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
                          if c.fetchone()[0] == 0:
                              c.execute('''
+                                 INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
+                                 VALUES (?, ?, ?, ?, ?, ?)
+                             ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                             c.execute('''
                                  INSERT INTO flights (flight_number, ac_type, etd, std, status)
                                  VALUES (?, ?, ?, ?, 'pending')
                              ''', (flight, aircraft_type, etd, std))
