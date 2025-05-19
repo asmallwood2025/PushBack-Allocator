@@ -43,6 +43,17 @@ def get_completed_tasks_for_user(username):
     return result
 
 
+def get_all_flights():
+    return c.execute("SELECT id, flight, aircraft, aircraft_type, destination, std, etd, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+
+def display_flights(flights):
+    for t in flights:
+        st.markdown(
+            f"**Flight:** {t[1]} | Aircraft: {t[2]} | Type: {t[3]} | Dest: {t[4]} | STD: {t[5]} | ETD: {t[6]} | Assigned To: {t[7]}"
+        )
+
+
+
 # Fixed Users
 STATIC_USERS = {
     "a.elliott": "0001",
