@@ -147,6 +147,11 @@ from datetime import datetime
 
 # UI Functions
 def admin_dashboard():
+
+    # Auto-refresh every 15 seconds unless user manually triggers
+    st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
+
+    
     st.title("👨‍✈️ Admin Dashboard")
     tabs = st.tabs(["Users", "Shifts", "Flights", "History"])
 
