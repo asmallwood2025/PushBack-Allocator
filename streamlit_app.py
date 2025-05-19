@@ -42,9 +42,9 @@ def get_completed_tasks_for_user(username):
     ).fetchall()
     return result
 
-
 def get_all_flights():
-    return c.execute("SELECT id, flight, aircraft, aircraft_type, destination, std, etd, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+    return c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+
 
 def display_flights(flights):
     for t in flights:
