@@ -260,7 +260,7 @@ def admin_dashboard():
 
             for _, row in df.iterrows():
                 with st.expander(f"{row['Flight Number']} completed by {row['Completed By']} at {row['Completed At']}"):
-                    if st.button(f"↩️ Mark Incomplete {row['ID']}", key=f"undo_{row['ID']}"):
+                    if st.button("↩️ Mark Incomplete", key=f"undo_{row['ID']}"):
                         cursor.execute("INSERT INTO flights (flight_number, aircraft, std, assigned_user) VALUES (?, ?, ?, ?)",
                                        (row["Flight Number"], row["Aircraft"], row["STD"], row["Completed By"]))
                         cursor.execute("DELETE FROM completed_tasks WHERE id = ?", (row["ID"],))
