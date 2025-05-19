@@ -58,7 +58,7 @@ def display_flights(flights):
         )
 
 def get_pending_tasks():
-    cursor.execute("""
+    c.execute("""
         SELECT id, flight_number, ac_type, etd, std, assigned_user_id
         FROM flights
         WHERE status = 'pending' AND assigned_user_id IS NULL
@@ -67,7 +67,7 @@ def get_pending_tasks():
     return cursor.fetchall()
 
 def get_active_users():
-    cursor.execute("""
+    c.execute("""
         SELECT id, name, shift_start, shift_end, current_task_id
         FROM users
         WHERE is_active = 1
@@ -77,7 +77,7 @@ def get_active_users():
 def get_task_by_id(task_id):
     if not task_id:
         return None
-    cursor.execute("""
+    c.execute("""
         SELECT id, ac_type, etd, std
         FROM flights
         WHERE id = ?
@@ -92,8 +92,8 @@ def get_task_time(task):
     return task['etd'] if task['etd'] else task['std']
 
 def assign_task(task_id, user_id):
-    cursor.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
-    cursor.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
+    c.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
+    c.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
     conn.commit()
 
 def is_task_overdue(task_time, now):
