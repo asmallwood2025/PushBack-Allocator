@@ -350,9 +350,9 @@ def user_dashboard(username):
 
     _ = st.session_state.refresh_key
     # Load assigned, upcoming, and history tasks
-    current_task = get_current_task_for_user(user_id)
-    upcoming = get_future_tasks_for_user(user_id)
-    completed = get_completed_tasks_for_user(user_id)
+    current_task = get_current_task_for_user(username)
+    upcoming = get_future_tasks_for_user(username)
+    completed = get_completed_tasks_for_user(username)
 
 
 
