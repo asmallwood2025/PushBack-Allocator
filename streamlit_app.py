@@ -70,9 +70,10 @@ def get_pending_tasks():
 
 def get_active_users():
     c.execute("""
-        SELECT id, name, shift_start, shift_end, current_task_id
-        FROM users
-        WHERE is_active = 1
+        SELECT u.id, u.name, s.start AS shift_start, s.finish AS shift_end, u.current_task_id
+        FROM users u
+        JOIN shifts s ON u.name = s.username
+        WHERE u.is_active = 1
     """)
     return c.fetchall()
 
