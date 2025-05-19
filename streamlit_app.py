@@ -5,8 +5,23 @@ import datetime
 import time
 from io import BytesIO
 
+
+
 # ✅ Must be the first Streamlit command
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
+
+
+
+
+if "refresh_key" not in st.session_state:
+    st.session_state.refresh_key = 0
+
+
+
+def refresh_data():
+    st.session_state.refresh_key += 1
+
+
 
 # Fixed Users
 STATIC_USERS = {
@@ -250,6 +265,17 @@ def admin_dashboard():
                 st.rerun()
             c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
         conn.commit()
+        st.button("🔄 Refresh Flights", on_click=refresh_data)
+
+# Use refresh_key as a dummy dependency to re-fetch from DB
+_ = st.session_state.refresh_key
+# Re-fetch and show flights from DB here
+flights = get_all_flights()
+display_flights(flights)
+
+
+
+    
 
     # HISTORY TAB
     with tabs[3]:
@@ -263,6 +289,13 @@ def admin_dashboard():
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
+                st.button("🔄 Refresh History", on_click=refresh_data)
+
+_ = st.session_state.refresh_key
+# Fetch and display completed tasks
+history = get_completed_tasks()
+display_history(history)
+
 
 def user_dashboard(username):
     from datetime import datetime
@@ -356,6 +389,15 @@ def user_dashboard(username):
                         conn.commit()
                         st.rerun()
 
+    st.button("🔄 Refresh My Tasks", on_click=refresh_data)
+
+_ = st.session_state.refresh_key
+# Load assigned, upcoming, and history tasks
+current_task = get_current_task_for_user(user_id)
+upcoming = get_future_tasks_for_user(user_id)
+completed = get_completed_tasks_for_user(user_id)
+
+
     with tabs[1]:
         st.header("📦 Completed Tasks")
         completed = c.execute(
@@ -370,6 +412,7 @@ def user_dashboard(username):
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
+                
 
 # App Entry
 with st.sidebar:
