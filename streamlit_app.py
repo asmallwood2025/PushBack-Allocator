@@ -210,10 +210,14 @@ def admin_dashboard():
                 conn.commit()
                 st.success(f"Updated shift for {user}")
 
-        if st.button("🗑 Clear All Shifts"):
-            c.execute("DELETE FROM shifts")
+
+        if st.button("🗑️ Clear Flight History"):
+            c.execute("DELETE FROM tasks WHERE complete = 1")
             conn.commit()
-            st.success("✅ All shifts cleared.")
+            st.success("✅ Flight history cleared.")
+            st.session_state["task_refresh"] = time.time()
+            st.rerun()
+
 
     # FLIGHTS TAB
     with tabs[2]:
