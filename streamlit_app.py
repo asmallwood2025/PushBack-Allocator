@@ -278,8 +278,6 @@ def user_dashboard(username):
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
-    st.title(f"👋 Welcome {username}")
-    tabs = st.tabs(["Tasks", "History"])
 
     def get_status_color(std_time_str):
         now = datetime.now()
