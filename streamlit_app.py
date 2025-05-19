@@ -29,11 +29,12 @@ def get_current_task_for_user(username):
     return result
 
 def get_future_tasks_for_user(username):
-    result = c.execute(
-        "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std OFFSET 1",
+    all_tasks = c.execute(
+        "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
         (username,)
     ).fetchall()
-    return result
+    return all_tasks[1:]  # Skip the first task
+
 
 def get_completed_tasks_for_user(username):
     result = c.execute(
