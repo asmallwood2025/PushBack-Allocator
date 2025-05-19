@@ -236,7 +236,7 @@ def admin_dashboard():
         tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
 
         for t in tasks:
-            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
             cols = st.columns([2, 1, 1])
             assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
             if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
