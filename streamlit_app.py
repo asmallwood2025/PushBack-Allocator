@@ -11,8 +11,7 @@ import datetime
 # ✅ Must be the first Streamlit command
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
-st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
-auto_allocate_tasks()
+
 
 # DB Setup
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
@@ -260,7 +259,7 @@ def admin_dashboard():
 
     # Auto-refresh every 15 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
-
+    auto_allocate_tasks()
     
     st.title("👨‍✈️ Admin Dashboard")
     tabs = st.tabs(["Users", "Shifts", "Flights", "History"])
