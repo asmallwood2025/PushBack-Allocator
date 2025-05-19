@@ -100,63 +100,63 @@ def admin_dashboard():
         st.header("📄 Manage Flights")
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
- if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
-        created = 0
-
-        for i, row in df.iterrows():
+        if uploaded_file:
             try:
-                flight = str(row[3]).strip()
-                aircraft = str(row[0]).strip()
-                aircraft_type = str(row[1]).strip()
-                destination = str(row[4]).strip()
-                std_raw = row[5]
-                etd_raw = row[6]
+                df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
+                created = 0
 
-                # Validate flight format (e.g., QF600, JQ810, VA231)
-                if not flight or not any(char.isdigit() for char in flight):
-                    continue
-
-                def parse_time(val):
-                    if pd.isna(val):
-                        return None
+                for i, row in df.iterrows():
                     try:
-                        val = int(val)
-                        hours = val // 100
-                        minutes = val % 100
-                        return f"{hours:02d}:{minutes:02d}"
-                    except:
-                        try:
-                            parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
-                            if pd.isna(parsed):
+                        flight = str(row[3]).strip()
+                        aircraft = str(row[0]).strip()
+                        aircraft_type = str(row[1]).strip()
+                        destination = str(row[4]).strip()
+                        std_raw = row[5]
+                        etd_raw = row[6]
+
+                        # Validate flight format (e.g., QF600, JQ810, VA231)
+                        if not flight or not any(char.isdigit() for char in flight):
+                            continue
+
+                        def parse_time(val):
+                            if pd.isna(val):
                                 return None
-                            return parsed.strftime("%H:%M")
-                        except:
-                            return None
+                            try:
+                                val = int(val)
+                                hours = val // 100
+                                minutes = val % 100
+                                return f"{hours:02d}:{minutes:02d}"
+                            except:
+                                try:
+                                    parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
+                                    if pd.isna(parsed):
+                                        return None
+                                    return parsed.strftime("%H:%M")
+                                except:
+                                    return None
 
-                std = parse_time(std_raw)
-                etd = parse_time(etd_raw)
+                        std = parse_time(std_raw)
+                        etd = parse_time(etd_raw)
 
-                if not std:
-                    raise ValueError("Invalid STD format")
+                        if not std:
+                            raise ValueError("Invalid STD format")
 
-                # Check for duplicates
-                c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
-                if c.fetchone()[0] == 0:
-                    c.execute('''
-                        INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (flight, aircraft, aircraft_type, destination, std, etd))
-                    created += 1
+                        # Check for duplicates
+                        c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
+                        if c.fetchone()[0] == 0:
+                            c.execute('''
+                                INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                            created += 1
 
+                    except Exception as e:
+                        st.warning(f"⚠️ Row {i+1} skipped: {e}")
+
+                conn.commit()
+                st.success(f"✅ {created} flight tasks created")
             except Exception as e:
-                st.warning(f"⚠️ Row {i+1} skipped: {e}")
-
-        conn.commit()
-        st.success(f"✅ {created} flight tasks created")
-    except Exception as e:
-        st.error(f"❌ Failed to process file: {e}")
+                st.error(f"❌ Failed to process file: {e}")
 
 
         st.subheader("🛫 Flight Tasks")
