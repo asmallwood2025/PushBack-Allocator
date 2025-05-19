@@ -341,7 +341,7 @@ def user_dashboard(username):
     from datetime import datetime
 
     # Auto-refresh every 15 seconds unless user manually triggers
-    st_autorefresh(interval=15 * 1000, key="user_auto_refresh")
+    st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
 
     # Initialize session state key safely
     if 'refresh_key' not in st.session_state:
