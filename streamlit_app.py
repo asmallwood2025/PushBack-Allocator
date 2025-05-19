@@ -178,127 +178,124 @@ def admin_dashboard():
             conn.commit()
             st.success("✅ All shifts cleared.")
 
-   # FLIGHTS TAB
-with tabs[2]:
-    st.header("📄 Manage Flights")
-    uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
+    # FLIGHTS TAB
+    with tabs[2]:
+        st.header("📄 Manage Flights")
+        uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
-    if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file, sheet_name='Push Back', header=None)
-            created = 0
+        if uploaded_file:
+            try:
+                df = pd.read_excel(uploaded_file, sheet_name='Push Back', header=None)
+                created = 0
 
-            for i, row in df.iterrows():
-                try:
-                    flight = str(row[3]).strip()
-                    aircraft = str(row[0]).strip()
-                    aircraft_type = str(row[1]).strip()
-                    destination = str(row[4]).strip()
-                    std_raw = row[5]
-                    etd_raw = row[6]
+                for i, row in df.iterrows():
+                    try:
+                        flight = str(row[3]).strip()
+                        aircraft = str(row[0]).strip()
+                        aircraft_type = str(row[1]).strip()
+                        destination = str(row[4]).strip()
+                        std_raw = row[5]
+                        etd_raw = row[6]
 
-                    # Validate flight format (e.g., QF600, JQ810, VA231)
-                    if not flight or not any(char.isdigit() for char in flight):
-                        continue
+                        # Validate flight format (e.g., QF600, JQ810, VA231)
+                        if not flight or not any(char.isdigit() for char in flight):
+                            continue
 
-                    def parse_time(val):
-                        if pd.isna(val):
-                            return None
-                        try:
-                            val = int(val)
-                            hours = val // 100
-                            minutes = val % 100
-                            return f"{hours:02d}:{minutes:02d}"
-                        except:
-                            try:
-                                parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
-                                if pd.isna(parsed):
-                                    return None
-                                return parsed.strftime("%H:%M")
-                            except:
+                        def parse_time(val):
+                            if pd.isna(val):
                                 return None
+                            try:
+                                val = int(val)
+                                hours = val // 100
+                                minutes = val % 100
+                                return f"{hours:02d}:{minutes:02d}"
+                            except:
+                                try:
+                                    parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
+                                    if pd.isna(parsed):
+                                        return None
+                                    return parsed.strftime("%H:%M")
+                                except:
+                                    return None
 
-                    std = parse_time(std_raw)
-                    etd = parse_time(etd_raw)
+                        std = parse_time(std_raw)
+                        etd = parse_time(etd_raw)
 
-                    if not std:
-                        raise ValueError("Invalid STD format")
+                        if not std:
+                            raise ValueError("Invalid STD format")
 
-                    # Check for duplicates
-                    c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
-                    if c.fetchone()[0] == 0:
-                        c.execute('''
-                            INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        ''', (flight, aircraft, aircraft_type, destination, std, etd))
-                        created += 1
+                        # Check for duplicates
+                        c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
+                        if c.fetchone()[0] == 0:
+                            c.execute('''
+                                INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                            created += 1
 
-                except Exception as e:
-                    st.warning(f"⚠️ Row {i+1} skipped: {e}")
+                    except Exception as e:
+                        st.warning(f"⚠️ Row {i+1} skipped: {e}")
 
+                conn.commit()
+                st.success(f"✅ {created} flight tasks created")
+            except Exception as e:
+                st.error(f"❌ Failed to process file: {e}")
+
+        if st.button("❌ Delete All Tasks"):
+            c.execute("DELETE FROM tasks WHERE complete = 0")
             conn.commit()
-            st.success(f"✅ {created} flight tasks created")
-        except Exception as e:
-            st.error(f"❌ Failed to process file: {e}")
+            st.success("✅ All tasks deleted.")
+            st.session_state["task_refresh"] = time.time()
 
-    if st.button("❌ Delete All Tasks"):
-        c.execute("DELETE FROM tasks WHERE complete = 0")
+        users = list(STATIC_USERS.keys())
+        tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+
+        for t in tasks:
+            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
+            cols = st.columns([2, 1, 1])
+            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
+            if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
+                completed_at = datetime.datetime.now().isoformat()
+                c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
+                conn.commit()
+                st.rerun()
+            if cols[2].button("Delete", key=f"delete_{t[0]}"):
+                c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
+                conn.commit()
+                st.rerun()
+            c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
         conn.commit()
-        st.success("✅ All tasks deleted.")
-        st.session_state["task_refresh"] = time.time()
 
-    users = list(STATIC_USERS.keys())
-    tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        st.button("🔄 Refresh Flights", on_click=refresh_data)
 
-    for t in tasks:
-        st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
-        cols = st.columns([2, 1, 1])
-        assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
-        if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
-            completed_at = datetime.datetime.now().isoformat()
-            c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
-            conn.commit()
-            st.rerun()
-        if cols[2].button("Delete", key=f"delete_{t[0]}"):
-            c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
-            conn.commit()
-            st.rerun()
-        c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
-    conn.commit()
-
-    st.button("🔄 Refresh Flights", on_click=refresh_data)
-
-    # Use refresh_key as a dummy dependency to re-fetch from DB
-    _ = st.session_state.refresh_key
-    # Re-fetch and show flights from DB here
-    flights = get_all_flights()
-    display_flights(flights)
-
+        # Use refresh_key as a dummy dependency to re-fetch from DB
+        _ = st.session_state.refresh_key
+        flights = get_all_flights()
+        display_flights(flights)
 
     # HISTORY TAB
-with tabs[3]:
-    st.header("📦 History")
-    completed = c.execute(
-        "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC"
-    ).fetchall()
+    with tabs[3]:
+        st.header("📦 History")
+        completed = c.execute(
+            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC"
+        ).fetchall()
 
-    for t in completed:
-        col1, col2 = st.columns([4, 1])
-        date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-        col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
-        if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
-            c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
-            conn.commit()
-            st.rerun()
+        for t in completed:
+            col1, col2 = st.columns([4, 1])
+            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
+            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
+            if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+                conn.commit()
+                st.rerun()
 
-    st.button("🔄 Refresh History", on_click=refresh_data)
+        st.button("🔄 Refresh History", on_click=refresh_data)
 
-# Dummy trigger to refresh data if needed
-_ = st.session_state.refresh_key
-# Fetch and display completed tasks
-history = get_completed_tasks()
-display_history(history)
-
+    # Dummy trigger to refresh data if needed
+    _ = st.session_state.refresh_key
+    # Fetch and display completed tasks
+    history = get_completed_tasks()
+    display_history(history)
 
 
 def user_dashboard(username):
