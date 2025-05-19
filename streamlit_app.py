@@ -1,83 +1,90 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
+import datetime
+import time
+from io import BytesIO
 
-# DB SETUP
+# ✅ Must be the first Streamlit command
+st.set_page_config(page_title="Flight Task Manager", layout="centered")
+
+# Fixed Users
+STATIC_USERS = {
+    "Adam": "0001",
+    "Samuel C": "0002",
+    "Darren": "0003",
+    "Isaac": "0004",
+    "Faith": "0005",
+    "Bailey": "0006",
+    "Bastien": "0007",
+    "Janith": "0008",
+    "Ringo": "0009",
+    "Jolly": "0010",
+    "Sam R": "0011",
+    "Sal": "0012",
+    "Albert": "3314",
+    "Mitch": "0013",
+    "Tadj": "0014",
+    "John": "0015",
+    "Du Bao": "0016",
+    "Kam": "0017",
+    "Ernie": "0018",
+    "Huss": "0019",
+    "Mo": "0020",
+    "Ronan": "0021",
+    "Caruso": "0022",
+    "Tunj": "0023",
+    "Mark": "0024",
+    "Shawn": "0025",
+    "David": "0026",
+    "D-mac": "0027",
+    "Costa": "0028"
+}
+
+# DB Setup
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    pin TEXT,
-    active INTEGER DEFAULT 1
-)''')
-c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    flight TEXT,
-    aircraft TEXT,
-    std TEXT,
-    etd TEXT,
-    destination TEXT,
-    assigned_to TEXT,
-    complete INTEGER DEFAULT 0,
-    notes TEXT,
-    completed_at TEXT
-)''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS pins (username TEXT PRIMARY KEY, pin TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, flight TEXT, aircraft TEXT, std TEXT, assigned_to TEXT, complete INTEGER DEFAULT 0, notes TEXT, completed_at TEXT)''')
 conn.commit()
 
-st.set_page_config(page_title="Flight Task Manager", layout="wide")
+# Initialize PINs table with static users
+for user, pin in STATIC_USERS.items():
+    c.execute("INSERT OR IGNORE INTO pins (username, pin) VALUES (?, ?)", (user, pin))
+conn.commit()
 
-# LOGIN
-if "auth" not in st.session_state:
-    st.session_state.auth = None
-    st.session_state.username = ""
+# Auth Functions
+def verify_pin(pin):
+    if pin == "3320":
+        return "admin"
+    c.execute("SELECT username FROM pins WHERE pin = ?", (pin,))
+    row = c.fetchone()
+    return row[0] if row else None
 
-if st.session_state.auth is None:
-    st.title("🔒 Enter 4-digit PIN")
-    pin_input = st.text_input("PIN", type="password")
-    if st.button("Login"):
-        if pin_input == "3320":
-            st.session_state.auth = "admin"
-        else:
-            user = c.execute("SELECT name FROM users WHERE pin = ? AND active = 1", (pin_input,)).fetchone()
-            if user:
-                st.session_state.auth = "user"
-                st.session_state.username = user[0]
-            else:
-                st.error("Invalid PIN")
+# UI Functions
+def admin_dashboard():
+    st.title("👨‍✈️ Admin Dashboard")
+    tabs = st.tabs(["Users", "Flights", "History"])
 
-# ADMIN DASHBOARD
-elif st.session_state.auth == "admin":
-    st.sidebar.title("Admin")
-    section = st.sidebar.radio("Go to", ["Users", "Flights"])
+    with tabs[0]:
+        st.header("👥 Manage Users")
+        for user in STATIC_USERS.keys():
+            current_pin = c.execute("SELECT pin FROM pins WHERE username = ?", (user,)).fetchone()[0]
+            col1, col2, col3 = st.columns([2, 2, 1])
+            col1.write(user)
+            new_pin = col2.text_input("Edit PIN", value=current_pin, max_chars=4, key=f"pin_{user}")
+            if col3.button("Update", key=f"update_{user}"):
+                if len(new_pin) == 4 and new_pin.isdigit():
+                    c.execute("UPDATE pins SET pin = ? WHERE username = ?", (new_pin, user))
+                    conn.commit()
+                    st.success(f"Updated PIN for {user}")
+                else:
+                    st.warning("PIN must be 4 digits")
 
-    if section == "Users":
-        st.header("User Management")
-        with st.form("Create User"):
-            name = st.text_input("Name")
-            pin = st.text_input("4-digit PIN")
-            if st.form_submit_button("Create"):
-                c.execute("INSERT INTO users (name, pin) VALUES (?, ?)", (name, pin))
-                conn.commit()
-                st.success("User created")
-
-        st.subheader("Existing Users")
-        users = c.execute("SELECT * FROM users").fetchall()
-        for u in users:
-            col1, col2, col3, col4 = st.columns(4)
-            col1.write(f"{u[1]}")
-            col2.write(f"PIN: {u[2]}")
-            if col3.button("Toggle Active" if u[3] else "Activate", key=f"toggle_{u[0]}"):
-                c.execute("UPDATE users SET active = ? WHERE id = ?", (0 if u[3] else 1, u[0]))
-                conn.commit()
-            if col4.button("Delete", key=f"delete_{u[0]}"):
-                c.execute("DELETE FROM users WHERE id = ?", (u[0],))
-                conn.commit()
-
-    elif section == "Flights":
-        st.header("Flight Tasks")
-        uploaded_file = st.file_uploader("Upload XLSX File", type="xlsx")
+    with tabs[1]:
+        st.header("📄 Manage Flights")
+        uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
         if uploaded_file:
             df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
@@ -91,119 +98,186 @@ elif st.session_state.auth == "admin":
                         continue
 
                     aircraft = str(row[1]).strip()
-                    destination = str(row[9]).strip()
                     std_raw = row[10]
-                    etd_raw = row[11]
 
                     if not flight or pd.isna(std_raw):
                         raise ValueError("Missing flight or STD")
 
-                    def parse_time(value):
-                        if isinstance(value, (int, float)):
-                            total_seconds = int(value * 24 * 60 * 60)
+                    try:
+                        if isinstance(std_raw, (int, float)):
+                            total_seconds = int(std_raw * 24 * 60 * 60)
                             hours = total_seconds // 3600
                             minutes = (total_seconds % 3600) // 60
-                            return f"{hours:02d}:{minutes:02d}"
-                        elif isinstance(value, str):
-                            parsed = pd.to_datetime(value, errors='coerce')
+                            std = f"{hours:02d}:{minutes:02d}"
+                        elif isinstance(std_raw, str):
+                            parsed = pd.to_datetime(std_raw, errors='coerce')
                             if pd.isna(parsed):
-                                parsed = pd.to_datetime(value, format="%H%M", errors='coerce')
+                                parsed = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
                             if pd.isna(parsed):
-                                raise ValueError(f"Unrecognized string format: {value}")
-                            return parsed.strftime("%H:%M")
+                                raise ValueError(f"Unrecognized string format for STD: {std_raw}")
+                            std = parsed.strftime("%H:%M")
                         else:
-                            return None
-
-                    std = parse_time(std_raw)
-                    etd = parse_time(etd_raw)
+                            raise ValueError(f"Unsupported STD type: {type(std_raw)}")
+                    except Exception as inner_e:
+                        raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
 
                     c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
                     if c.fetchone()[0] == 0:
-                        c.execute("INSERT INTO tasks (flight, aircraft, std, etd, destination) VALUES (?, ?, ?, ?, ?)",
-                                  (flight, aircraft, std, etd, destination))
+                        c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
                         created += 1
                 except Exception as e:
-                    st.warning(f"⚠️ Row {i+1} skipped: {e}")
+                    st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
             conn.commit()
             st.success(f"✅ {created} flight tasks created")
 
-        st.subheader("Current Tasks")
-        tasks = c.execute("SELECT id, flight, aircraft, std, etd, destination, assigned_to, notes FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
-        for t in tasks:
-            st.markdown(f"**{t[1]}** | Aircraft: {t[2]} | Dest: {t[5]} | STD: {t[3]} | ETD: {t[4]} | Assigned to: {t[6] or 'Unassigned'}")
-            col1, col2, col3 = st.columns([3, 3, 1])
-            with col1:
-                users = [u[1] for u in c.execute("SELECT name FROM users WHERE active = 1").fetchall()]
-                assigned_user = st.selectbox("Assign to", [""] + users, index=users.index(t[6]) + 1 if t[6] in users else 0, key=f"assign_{t[0]}")
-                if assigned_user:
-                    c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned_user, t[0]))
-                    conn.commit()
-            with col2:
-                new_note = st.text_input("Add/Edit Note", value=t[7] or "", key=f"note_{t[0]}")
-                if st.button("Save Note", key=f"savenote_{t[0]}"):
-                    c.execute("UPDATE tasks SET notes = ? WHERE id = ?", (new_note, t[0]))
-                    conn.commit()
-            with col3:
-                if st.button("Delete Task", key=f"del_{t[0]}"):
-                    c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
-                    conn.commit()
-                    st.experimental_rerun()
-
-        if st.button("Delete All Tasks"):
-            c.execute("DELETE FROM tasks")
+        st.subheader("🛫 Flight Tasks")
+        if st.button("❌ Delete All Tasks"):
+            c.execute("DELETE FROM tasks WHERE complete = 0")
             conn.commit()
-            st.experimental_rerun()
+            st.rerun()
 
-        st.subheader("History")
-        history = c.execute("SELECT id, flight, aircraft, std, etd, destination, assigned_to, completed_at, notes FROM tasks WHERE complete = 1 ORDER BY completed_at DESC").fetchall()
-        for h in history:
-            st.markdown(f"✅ {h[1]} | Aircraft: {h[2]} | Dest: {h[5]} | STD: {h[3]} | ETD: {h[4]} | Assigned to: {h[6]} | Done at: {h[7]} | Note: {h[8] or 'None'}")
-            if st.button("Mark as Incomplete", key=f"undo_{h[0]}"):
-                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (h[0],))
+        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        users = list(STATIC_USERS.keys())
+
+        for t in tasks:
+            st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
+            cols = st.columns([2, 1, 1])
+            assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
+            if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
+                completed_at = datetime.datetime.now().isoformat()
+                c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
                 conn.commit()
-                st.experimental_rerun()
+                st.rerun()
+            if cols[2].button("Delete", key=f"delete_{t[0]}"):
+                c.execute("DELETE FROM tasks WHERE id = ?", (t[0],))
+                conn.commit()
+                st.rerun()
+            c.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (assigned, t[0]))
+        conn.commit()
 
-# USER DASHBOARD
-elif st.session_state.auth == "user":
-    st.sidebar.title(f"👤 {st.session_state.username}")
-    tab = st.sidebar.radio("", ["Tasks", "Future Tasks", "History"])
+    with tabs[2]:
+        st.header("📦 History")
+        completed = c.execute("SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC").fetchall()
+        for t in completed:
+            col1, col2 = st.columns([4, 1])
+            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
+            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
+            if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+                conn.commit()
+                st.rerun()
 
-    if tab == "Tasks":
-        st.header("Your Tasks")
-        tasks = c.execute("SELECT id, flight, aircraft, std, etd, destination, notes FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (st.session_state.username,)).fetchall()
+def user_dashboard(username):
+    from datetime import datetime
+
+    st.experimental_set_query_params(refresh=str(time.time()))
+    time.sleep(5)
+
+    st.title(f"👋 Welcome {username}")
+    tabs = st.tabs(["Tasks", "History"])
+
+    def get_status_color(std_time_str):
+        now = datetime.now()
+        try:
+            std_today = datetime.combine(now.date(), datetime.strptime(std_time_str, "%H:%M").time())
+        except:
+            return "#cccccc"
+        diff = (std_today - now).total_seconds() / 60
+        if diff <= 10:
+            return "#ff5252"
+        elif diff <= 15:
+            return "#ff9800"
+        elif diff <= 25:
+            return "#4caf50"
+        else:
+            return "#cccccc"
+
+    with tabs[0]:
+        st.header("🛠️ Your Tasks")
+
+        tasks = c.execute(
+            "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
+            (username,)
+        ).fetchall()
+
         if tasks:
             current = tasks[0]
-            std_hour = int(current[3].split(":")[0])
-            color = "green" if std_hour >= 12 else "blue"
-            st.markdown(
-                f"""
-                <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
-                    <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
-                    <p><strong>Aircraft:</strong> {current[2]}</p>
-                    <p><strong>Destination:</strong> {current[5]}</p>
-                    <p><strong>STD:</strong> {current[3]}</p>
-                    <p><strong>ETD:</strong> {current[4]}</p>
-                    <p><strong>Note:</strong> {current[6] or 'None'}</p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            if st.button("Push Complete"):
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (now, current[0]))
-                conn.commit()
-                st.experimental_rerun()
+            color = get_status_color(current[3])
+            st.markdown("### 🟢 **Current Task**")
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
+                        <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
+                        <p><strong>Aircraft:</strong> {current[2]}</p>
+                        <p><strong>STD:</strong> {current[3]}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                if st.button("✅ Complete Current", key=f"complete_{current[0]}"):
+                    completed_at = datetime.now().isoformat()
+                    c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, current[0]))
+                    conn.commit()
+                    st.rerun()
+
+            if len(tasks) > 1:
+                next_task = tasks[1]
+                color = get_status_color(next_task[3])
+                st.markdown("### 🟡 **Next Task**")
+                with st.container():
+                    st.markdown(
+                        f"""
+                        <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
+                            <h3 style='margin-bottom: 10px;'>✈️ {next_task[1]}</h3>
+                            <p><strong>Aircraft:</strong> {next_task[2]}</p>
+                            <p><strong>STD:</strong> {next_task[3]}</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
         else:
-            st.info("No tasks assigned")
+            st.info("You currently have no assigned tasks.")
 
-    elif tab == "Future Tasks":
-        st.header("Upcoming Tasks")
-        tasks = c.execute("SELECT flight, aircraft, std, etd, destination, notes FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std", (st.session_state.username,)).fetchall()
-        for t in tasks[1:]:
-            st.markdown(f"✈️ {t[0]} | Aircraft: {t[1]} | Dest: {t[4]} | STD: {t[2]} | ETD: {t[3]} | Note: {t[5] or 'None'}")
+        if len(tasks) > 2:
+            with st.expander("📋 View Future Tasks"):
+                for t in tasks[2:]:
+                    col1, col2 = st.columns([4, 1])
+                    col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
+                    if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
+                        completed_at = datetime.now().isoformat()
+                        c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
+                        conn.commit()
+                        st.rerun()
 
-    elif tab == "History":
-        st.header("Completed Tasks")
-        history = c.execute("SELECT flight, aircraft, std, etd, destination, completed_at, notes FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC", (st.session_state.username,)).fetchall()
-        for h in history:
-            st.markdown(f"✅ {h[0]} | Aircraft: {h[1]} | Dest: {h[4]} | STD: {h[2]} | ETD: {h[3]} | Done at: {h[5]} | Note: {h[6] or 'None'}")
+    with tabs[1]:
+        st.header("📦 Completed Tasks")
+        completed = c.execute(
+            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
+            (username,)
+        ).fetchall()
+        for t in completed:
+            col1, col2 = st.columns([4, 1])
+            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
+            col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]} | Completed: {date_str}")
+            if col2.button("🔁 Reactivate", key=f"reactivate_{t[0]}"):
+                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+                conn.commit()
+                st.rerun()
+
+# App Entry
+with st.sidebar:
+    st.markdown("## 🔐 Sign In")
+    pin = st.text_input("Enter 4-digit PIN", type="password", max_chars=4)
+    if st.button("Login") and pin:
+        user = verify_pin(pin)
+        if user:
+            st.session_state["user"] = user
+        else:
+            st.error("Invalid PIN")
+
+if "user" in st.session_state:
+    if st.session_state.user == "admin":
+        admin_dashboard()
+    else:
+        user_dashboard(st.session_state.user)
