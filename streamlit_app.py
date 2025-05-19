@@ -333,8 +333,9 @@ def admin_dashboard():
 def user_dashboard(username):
     from datetime import datetime
 
-    st.query_params(refresh=str(time.time()))
-    time.sleep(5)
+    st.session_state.refresh_key += 1
+    st.rerun()
+
 
     # Fetch shift start/finish from DB
     row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (username,)).fetchone()
