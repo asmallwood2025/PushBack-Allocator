@@ -311,25 +311,28 @@ def admin_dashboard():
         display_flights(flights)
 
     # HISTORY TAB
-    with tabs[3]:
-        st.header("📦 History")
-        completed = c.execute(
-            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC"
-        ).fetchall()
+with tabs[3]:
+    st.header("📦 History")
+    completed = c.execute(
+        "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE complete = 1 ORDER BY completed_at DESC"
+    ).fetchall()
 
-        for t in completed:
-            col1, col2 = st.columns([4, 1])
-            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-            col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
-            if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
-                conn.commit()
-                st.rerun()
+    for t in completed:
+        col1, col2 = st.columns([4, 1])
+        date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
+        col1.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]} Completed: {date_str}")
+        if col2.button("Mark Incomplete", key=f"undo_{t[0]}"):
+            c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+            conn.commit()
+            st.rerun()
 
-        st.button("🔄 Refresh History", on_click=refresh_data)
+    st.button("🔄 Refresh History", on_click=refresh_data)
 
-    # Dummy trigger to refresh data if needed
-    _ = st.session_state.refresh_key
+    if st.button("🗑️ Clear Flight History"):
+        c.execute("DELETE FROM tasks WHERE complete = 1")
+        conn.commit()
+        st.success("✅ Flight history cleared.")
+        st.rerun()
 
   
 
