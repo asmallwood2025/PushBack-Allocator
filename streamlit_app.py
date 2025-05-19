@@ -100,7 +100,7 @@ def admin_dashboard():
         st.header("📄 Manage Flights")
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
-        if uploaded_file:
+ if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
         created = 0
@@ -114,7 +114,8 @@ def admin_dashboard():
                 std_raw = row[5]
                 etd_raw = row[6]
 
-                if not flight or not flight.startswith("QF"):
+                # Validate flight format (e.g., QF600, JQ810, VA231)
+                if not flight or not any(char.isdigit() for char in flight):
                     continue
 
                 def parse_time(val):
@@ -140,7 +141,7 @@ def admin_dashboard():
                 if not std:
                     raise ValueError("Invalid STD format")
 
-                # Avoid duplicates
+                # Check for duplicates
                 c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
                 if c.fetchone()[0] == 0:
                     c.execute('''
