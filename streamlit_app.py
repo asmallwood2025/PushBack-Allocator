@@ -459,6 +459,7 @@ def user_dashboard(username):
                 conn.commit()
                 st.rerun()
 
+
 # App Entry
 with st.sidebar:
     st.markdown("## 🔐 Sign In")
