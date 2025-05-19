@@ -318,6 +318,16 @@ def user_dashboard(username):
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
+    st.button("🔄 Refresh My Tasks", on_click=refresh_data)
+
+    _ = st.session_state.refresh_key
+    # Load assigned, upcoming, and history tasks
+    current_task = get_current_task_for_user(user_id)
+    upcoming = get_future_tasks_for_user(user_id)
+    completed = get_completed_tasks_for_user(user_id)
+
+
+
 
     def get_status_color(std_time_str):
         now = datetime.now()
@@ -392,15 +402,6 @@ def user_dashboard(username):
                         c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
                         conn.commit()
                         st.rerun()
-
-    st.button("🔄 Refresh My Tasks", on_click=refresh_data)
-
-_ = st.session_state.refresh_key
-# Load assigned, upcoming, and history tasks
-current_task = get_current_task_for_user(user_id)
-upcoming = get_future_tasks_for_user(user_id)
-completed = get_completed_tasks_for_user(user_id)
-
 
     with tabs[1]:
         st.header("📦 Completed Tasks")
