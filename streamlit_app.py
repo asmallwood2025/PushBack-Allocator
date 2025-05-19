@@ -40,6 +40,7 @@ STATIC_USERS = {
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
+# Ensure tables exist
 c.execute('''
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +65,12 @@ c.execute('''
     )
 ''')
 
+c.execute('''
+    CREATE TABLE IF NOT EXISTS pins (
+        username TEXT PRIMARY KEY,
+        pin TEXT
+    )
+''')
 
 conn.commit()
 
