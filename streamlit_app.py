@@ -333,9 +333,9 @@ def admin_dashboard():
 def user_dashboard(username):
     from datetime import datetime
 
-    st.session_state.refresh_key += 1
-    st.rerun()
-
+    # Initialize session state key safely
+    if 'refresh_key' not in st.session_state:
+        st.session_state.refresh_key = 0
 
     # Fetch shift start/finish from DB
     row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (username,)).fetchone()
@@ -348,16 +348,19 @@ def user_dashboard(username):
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
+    # Trigger manual refresh
+    def refresh_data():
+        st.session_state.refresh_key += 1
+        st.rerun()
+
     st.button("🔄 Refresh My Tasks", on_click=refresh_data)
 
-    _ = st.session_state.refresh_key
+    _ = st.session_state.refresh_key  # Trigger re-execution when key changes
+
     # Load assigned, upcoming, and history tasks
     current_task = get_current_task_for_user(username)
     upcoming = get_future_tasks_for_user(username)
     completed = get_completed_tasks_for_user(username)
-
-
-
 
     def get_status_color(std_time_str):
         now = datetime.now()
@@ -439,6 +442,7 @@ def user_dashboard(username):
             "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
             (username,)
         ).fetchall()
+
         for t in completed:
             col1, col2 = st.columns([4, 1])
             date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
@@ -447,7 +451,7 @@ def user_dashboard(username):
                 c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
                 conn.commit()
                 st.rerun()
-                
+
 
 # App Entry
 with st.sidebar:
