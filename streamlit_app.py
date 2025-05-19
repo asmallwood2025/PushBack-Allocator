@@ -225,7 +225,7 @@ def admin_dashboard():
          c.execute("DELETE FROM shifts")
          conn.commit()
          st.success("✅ All shifts cleared.")
-         st.experimental_rerun()
+         st.rerun()
  
      # FLIGHTS TAB
      with tabs[2]:
