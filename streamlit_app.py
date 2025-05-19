@@ -165,7 +165,24 @@ def admin_dashboard():
             conn.commit()
             st.rerun()
 
-        tasks = c.execute("SELECT id, flight, aircraft, std, assigned_to FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+        tasks = c.execute("DROP TABLE IF EXISTS tasks")
+c.execute('''
+    CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flight TEXT,
+        aircraft TEXT,
+        aircraft_type TEXT,
+        destination TEXT,
+        std TEXT,
+        etd TEXT,
+        assigned_to TEXT,
+        complete INTEGER DEFAULT 0,
+        notes TEXT,
+        completed_at TEXT
+    )
+''')
+conn.commit()
+
         users = list(STATIC_USERS.keys())
 
         for t in tasks:
