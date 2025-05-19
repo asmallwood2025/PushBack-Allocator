@@ -267,15 +267,16 @@ def user_dashboard(username):
     st.experimental_set_query_params(refresh=str(time.time()))
     time.sleep(5)
 
-
     # Fetch shift start/finish from DB
-row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
-if row:
-    start, finish = row
-    st.markdown(f"### 🕒 Your shift: **{start} – {finish}**")
-else:
-    st.markdown("### 🕒 Your shift: Not assigned")
+    row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (username,)).fetchone()
+    if row:
+        start, finish = row
+        st.markdown(f"### 🕒 Your shift: **{start} – {finish}**")
+    else:
+        st.markdown("### 🕒 Your shift: Not assigned")
 
+    st.title(f"👋 Welcome {username}")
+    tabs = st.tabs(["Tasks", "History"])
 
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
