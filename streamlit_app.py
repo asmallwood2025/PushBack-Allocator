@@ -56,6 +56,15 @@ c.execute('''
     )
 ''')
 
+c.execute('''
+    CREATE TABLE IF NOT EXISTS shifts (
+        username TEXT PRIMARY KEY,
+        start TEXT,
+        finish TEXT
+    )
+''')
+
+
 conn.commit()
 
 
@@ -91,6 +100,53 @@ def admin_dashboard():
                     st.success(f"Updated PIN for {user}")
                 else:
                     st.warning("PIN must be 4 digits")
+
+
+    st.subheader("📅 Import Shifts by Day")
+shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
+
+if shift_file:
+    try:
+        shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
+        shift_df = shift_df.dropna(subset=["username", "start", "finish"])
+        imported = 0
+
+        for _, row in shift_df.iterrows():
+            username = str(row["username"]).strip().lower()
+            start = pd.to_datetime(row["start"]).strftime("%H:%M")
+            finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
+
+            if username in STATIC_USERS:
+                c.execute("REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)", (username, start, finish))
+                imported += 1
+
+        conn.commit()
+        st.success(f"✅ Imported {imported} shifts.")
+    except Exception as e:
+        st.error(f"Failed to import: {e}")
+
+
+st.subheader("📝 Manually Edit Shifts")
+for user in STATIC_USERS:
+    row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
+    start_val = row[0] if row else ""
+    finish_val = row[1] if row else ""
+
+    col1, col2, col3 = st.columns([2, 2, 1])
+    col1.markdown(f"**{user}**")
+    start = col2.text_input("Start", value=start_val, key=f"start_{user}")
+    finish = col3.text_input("Finish", value=finish_val, key=f"finish_{user}")
+
+    if st.button("Update Shift", key=f"update_shift_{user}"):
+        c.execute("REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)", (user, start, finish))
+        conn.commit()
+        st.success(f"Updated shift for {user}")
+
+
+if st.button("🗑 Clear All Shifts"):
+    c.execute("DELETE FROM shifts")
+    conn.commit()
+    st.success("✅ All shifts cleared.")
 
     with tabs[1]:
         st.header("📄 Manage Flights")
@@ -200,6 +256,16 @@ def user_dashboard(username):
 
     st.experimental_set_query_params(refresh=str(time.time()))
     time.sleep(5)
+
+
+    # Fetch shift start/finish from DB
+row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
+if row:
+    start, finish = row
+    st.markdown(f"### 🕒 Your shift: **{start} – {finish}**")
+else:
+    st.markdown("### 🕒 Your shift: Not assigned")
+
 
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
