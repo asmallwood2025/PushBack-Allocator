@@ -200,6 +200,22 @@ c.execute('''
     )
 ''')
 
+
+
+c.execute("""
+    CREATE TABLE IF NOT EXISTS flights (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flight_number TEXT,
+        ac_type TEXT,
+        etd TEXT,
+        std TEXT,
+        assigned_user_id INTEGER,
+        status TEXT
+    )
+""")
+conn.commit()
+
+
 conn.commit()
 
 
