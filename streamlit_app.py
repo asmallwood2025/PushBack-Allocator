@@ -13,7 +13,9 @@ st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
 st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 
-
+# DB Setup
+conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
+c = conn.cursor()
 
 if "refresh_key" not in st.session_state:
     st.session_state.refresh_key = 0
@@ -162,9 +164,7 @@ STATIC_USERS = {
     "s.brooks": "0028"
 }
 
-# DB Setup
-conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
-c = conn.cursor()
+
 
 # Ensure tables exist
 c.execute('''
