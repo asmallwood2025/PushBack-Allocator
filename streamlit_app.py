@@ -15,7 +15,9 @@ st_autorefresh(interval=5000, key="auto_alloc_refresh")  # 5-second refresh
 
 # DB Setup
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
+conn.row_factory = sqlite3.Row  # <-- add this line
 c = conn.cursor()
+
 
 if "refresh_key" not in st.session_state:
     st.session_state.refresh_key = 0
