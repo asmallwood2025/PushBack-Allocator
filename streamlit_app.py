@@ -45,9 +45,9 @@ STATIC_USERS = {
 conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
 c = conn.cursor()
 
-c.execute('''CREATE TABLE IF NOT EXISTS pins (username TEXT PRIMARY KEY, pin TEXT)''')
+c.execute("DROP TABLE IF EXISTS tasks")
 c.execute('''
-    CREATE TABLE IF NOT EXISTS tasks (
+    CREATE TABLE tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         flight TEXT,
         aircraft TEXT,
@@ -62,6 +62,7 @@ c.execute('''
     )
 ''')
 conn.commit()
+
 
 # Initialize PINs table with static users
 for user, pin in STATIC_USERS.items():
@@ -165,25 +166,9 @@ def admin_dashboard():
             conn.commit()
             st.rerun()
 
-        tasks = c.execute("DROP TABLE IF EXISTS tasks")
-c.execute('''
-    CREATE TABLE tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        flight TEXT,
-        aircraft TEXT,
-        aircraft_type TEXT,
-        destination TEXT,
-        std TEXT,
-        etd TEXT,
-        assigned_to TEXT,
-        complete INTEGER DEFAULT 0,
-        notes TEXT,
-        completed_at TEXT
-    )
-''')
-conn.commit()
-
         users = list(STATIC_USERS.keys())
+
+        tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
 
         for t in tasks:
             st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[3]}")
