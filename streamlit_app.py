@@ -165,60 +165,67 @@ def admin_dashboard():
                     st.success(f"Updated PIN for {user}")
                 else:
                     st.warning("PIN must be 4 digits")
-
     # SHIFTS TAB
-    with tabs[1]:
-        st.header("📅 Shift Management")
+   with tabs[1]:
+    st.header("📅 Shift Management")
 
-        st.subheader("📥 Import Shifts from Excel")
-        shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
+    st.subheader("📥 Import Shifts from Excel")
+    shift_file = st.file_uploader("Upload Shift Schedule (.xlsx)", type=["xlsx"], key="shift_upload")
 
-        if shift_file:
-            try:
-                shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
-                shift_df = shift_df.dropna(subset=["username", "start", "finish"])
-                imported = 0
+    if shift_file:
+        try:
+            shift_df = pd.read_excel(shift_file, skiprows=1, usecols="A:C", names=["username", "start", "finish"])
+            shift_df = shift_df.dropna(subset=["username", "start", "finish"])
+            imported = 0
 
-                for _, row in shift_df.iterrows():
-                    username = str(row["username"]).strip().lower()
-                    start = pd.to_datetime(row["start"]).strftime("%H:%M")
-                    finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
+            for _, row in shift_df.iterrows():
+                username = str(row["username"]).strip().lower()
+                start = pd.to_datetime(row["start"]).strftime("%H:%M")
+                finish = pd.to_datetime(row["finish"]).strftime("%H:%M")
 
-                    if username in STATIC_USERS:
-                        c.execute(
-                            "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
-                            (username, start, finish)
-                        )
-                        imported += 1
+                if username in STATIC_USERS:
+                    c.execute(
+                        "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
+                        (username, start, finish)
+                    )
+                    imported += 1
 
-                conn.commit()
-                st.success(f"✅ Imported {imported} shifts.")
-            except Exception as e:
-                st.error(f"Failed to import: {e}")
+            conn.commit()
+            st.success(f"✅ Imported {imported} shifts.")
+        except Exception as e:
+            st.error(f"Failed to import: {e}")
 
-        st.subheader("📝 Manually Edit Shifts")
+    st.subheader("📝 Manually Edit Shifts")
+
+    with st.form("shift_edit_form"):
         for user in STATIC_USERS:
             row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
             start_val = row[0] if row else ""
             finish_val = row[1] if row else ""
 
-            col1, col2, col3 = st.columns([2, 2, 1])
+            col1, col2, col3 = st.columns([2, 2, 2])
             col1.markdown(f"**{user}**")
             start = col2.text_input("Start", value=start_val, key=f"start_{user}")
             finish = col3.text_input("Finish", value=finish_val, key=f"finish_{user}")
 
-            if st.button("Update Shift", key=f"update_shift_{user}"):
+        submitted = st.form_submit_button("💾 Update All Shifts")
+        if submitted:
+            for user in STATIC_USERS:
+                start = st.session_state.get(f"start_{user}", "")
+                finish = st.session_state.get(f"finish_{user}", "")
                 c.execute(
                     "REPLACE INTO shifts (username, start, finish) VALUES (?, ?, ?)",
                     (user, start, finish)
                 )
-                conn.commit()
-                st.success(f"Updated shift for {user}")
-
-        if st.button("🗑 Clear All Shifts"):
-            c.execute("DELETE FROM shifts")
             conn.commit()
-            st.success("✅ All shifts cleared.")
+            st.success("✅ All shifts updated.")
+
+    # ✅ Clear All Shifts button (now works because form is isolated)
+    if st.button("🗑 Clear All Shifts", key="clear_all_shifts_btn"):
+        c.execute("DELETE FROM shifts")
+        conn.commit()
+        st.success("✅ All shifts cleared.")
+        st.experimental_rerun()
 
     # FLIGHTS TAB
     with tabs[2]:
