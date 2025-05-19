@@ -63,7 +63,7 @@ def display_flights(flights):
 # Fixed Users
 STATIC_USERS = {
     "a.elliott": "0001",
-    "s,chianta": "0002",
+    "s.chianta": "0002",
     "d.jeffery": "0003",
     "i,faramio": "0004",
     "f.fepuleai": "0005",
