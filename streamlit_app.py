@@ -330,8 +330,13 @@ def admin_dashboard():
     display_history(history)
 
 
+from streamlit_autorefresh import st_autorefresh
+
 def user_dashboard(username):
     from datetime import datetime
+
+    # Auto-refresh every 15 seconds unless user manually triggers
+    st_autorefresh(interval=15 * 1000, key="user_auto_refresh")
 
     # Initialize session state key safely
     if 'refresh_key' not in st.session_state:
@@ -348,14 +353,12 @@ def user_dashboard(username):
     st.title(f"👋 Welcome {username}")
     tabs = st.tabs(["Tasks", "History"])
 
-    # Define refresh function
     def refresh_data():
         st.session_state.refresh_key += 1
         st.rerun()
 
-    _ = st.session_state.refresh_key  # Trigger re-execution when refresh_key changes
+    _ = st.session_state.refresh_key  # Track manual refreshes
 
-    # Load assigned, upcoming, and history tasks
     current_task = get_current_task_for_user(username)
     upcoming = get_future_tasks_for_user(username)
     completed = get_completed_tasks_for_user(username)
