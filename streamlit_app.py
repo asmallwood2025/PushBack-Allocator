@@ -155,11 +155,15 @@ def admin_dashboard():
                 st.error(f"❌ Failed to process file: {e}")
 
 
-        st.subheader("🛫 Flight Tasks")
-        if st.button("❌ Delete All Tasks"):
-            c.execute("DELETE FROM tasks WHERE complete = 0")
-            conn.commit()
-            st.rerun()
+       if st.button("❌ Delete All Tasks"):
+    c.execute("DELETE FROM tasks WHERE complete = 0")
+    conn.commit()
+    st.success("✅ All tasks deleted.")
+    st.session_state["task_refresh"] = time.time()  # Force re-render
+
+# Use refresh key if needed to avoid stale cache
+tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+
 
         users = list(STATIC_USERS.keys())
 
