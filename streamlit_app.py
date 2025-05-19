@@ -99,7 +99,7 @@ def is_task_overdue(task_time, now):
 
 
 def auto_allocate_tasks():
-    now = datetime.datetime.now()
+    now = datetime.now()
     tasks = get_pending_tasks()
     users = get_active_users()
 
