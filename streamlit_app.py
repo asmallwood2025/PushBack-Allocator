@@ -86,49 +86,62 @@ def admin_dashboard():
         st.header("📄 Manage Flights")
         uploaded_file = st.file_uploader("Upload Flight Schedule (.xlsx)", type=["xlsx"])
 
-        if uploaded_file:
-            df_int = pd.read_excel(uploaded_file, sheet_name='INT', header=None)
-            df_dom = pd.read_excel(uploaded_file, sheet_name='DOM', header=None)
-            combined_df = pd.concat([df_int, df_dom], ignore_index=True)
-            created = 0
-            for i, row in combined_df.iterrows():
-                try:
-                    flight = str(row[8]).strip()
-                    if not flight.startswith("QF"):
-                        continue
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
+        created = 0
 
-                    aircraft = str(row[1]).strip()
-                    std_raw = row[10]
+        for i, row in df.iterrows():
+            try:
+                flight = str(row[3]).strip()
+                aircraft = str(row[0]).strip()
+                aircraft_type = str(row[1]).strip()
+                destination = str(row[4]).strip()
+                std_raw = row[5]
+                etd_raw = row[6]
 
-                    if not flight or pd.isna(std_raw):
-                        raise ValueError("Missing flight or STD")
+                if not flight.startswith("QF") or not flight:
+                    continue
 
+                def parse_time(val):
+                    if pd.isna(val):
+                        return None
                     try:
-                        if isinstance(std_raw, (int, float)):
-                            total_seconds = int(std_raw * 24 * 60 * 60)
-                            hours = total_seconds // 3600
-                            minutes = (total_seconds % 3600) // 60
-                            std = f"{hours:02d}:{minutes:02d}"
-                        elif isinstance(std_raw, str):
-                            parsed = pd.to_datetime(std_raw, errors='coerce')
+                        val = int(val)
+                        hours = val // 100
+                        minutes = val % 100
+                        return f"{hours:02d}:{minutes:02d}"
+                    except:
+                        try:
+                            parsed = pd.to_datetime(str(val), format="%H%M", errors='coerce')
                             if pd.isna(parsed):
-                                parsed = pd.to_datetime(std_raw, format="%H%M", errors='coerce')
-                            if pd.isna(parsed):
-                                raise ValueError(f"Unrecognized string format for STD: {std_raw}")
-                            std = parsed.strftime("%H:%M")
-                        else:
-                            raise ValueError(f"Unsupported STD type: {type(std_raw)}")
-                    except Exception as inner_e:
-                        raise ValueError(f"Failed to parse STD: {std_raw} ({inner_e})")
+                                return None
+                            return parsed.strftime("%H:%M")
+                        except:
+                            return None
 
-                    c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
-                    if c.fetchone()[0] == 0:
-                        c.execute("INSERT INTO tasks (flight, aircraft, std) VALUES (?, ?, ?)", (flight, aircraft, std))
-                        created += 1
-                except Exception as e:
-                    st.warning(f"⚠️ Row {i+1} skipped due to error: {e}")
-            conn.commit()
-            st.success(f"✅ {created} flight tasks created")
+                std = parse_time(std_raw)
+                etd = parse_time(etd_raw)
+
+                if not std:
+                    raise ValueError("Invalid STD format")
+
+                # Avoid duplicates
+                c.execute("SELECT COUNT(*) FROM tasks WHERE flight = ? AND std = ?", (flight, std))
+                if c.fetchone()[0] == 0:
+                    c.execute('''
+                        INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (flight, aircraft, aircraft_type, destination, std, etd))
+                    created += 1
+
+            except Exception as e:
+                st.warning(f"⚠️ Row {i+1} skipped: {e}")
+
+        conn.commit()
+        st.success(f"✅ {created} flight tasks created")
+    except Exception as e:
+        st.error(f"❌ Failed to process file: {e}")
 
         st.subheader("🛫 Flight Tasks")
         if st.button("❌ Delete All Tasks"):
