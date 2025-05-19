@@ -102,7 +102,7 @@ def admin_dashboard():
 
         if uploaded_file:
             try:
-                df = pd.read_excel(uploaded_file, sheet_name='Push Back ', header=None)
+                df = pd.read_excel(uploaded_file, sheet_name='Push Back', header=None)
                 created = 0
 
                 for i, row in df.iterrows():
