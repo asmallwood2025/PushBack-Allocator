@@ -325,7 +325,7 @@ def admin_dashboard():
     # Dummy trigger to refresh data if needed
     _ = st.session_state.refresh_key
     # Fetch and display completed tasks
-    history = get_completed_tasks()
+    history = get_completed_tasks(username)
     display_history(history)
 
 
