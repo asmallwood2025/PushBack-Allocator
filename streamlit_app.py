@@ -333,7 +333,7 @@ def admin_dashboard():
 def user_dashboard(username):
     from datetime import datetime
 
-    st.experimental_set_query_params(refresh=str(time.time()))
+    st.query_params(refresh=str(time.time()))
     time.sleep(5)
 
     # Fetch shift start/finish from DB
