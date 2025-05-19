@@ -234,7 +234,7 @@ def admin_dashboard():
                         std_raw = row[5]
                         etd_raw = row[6]
 
-                        # Validate flight format (e.g., QF600, JQ810, VA231)
+                        # Validate flight format
                         if not flight or not any(char.isdigit() for char in flight):
                             continue
 
