@@ -542,21 +542,30 @@ def user_dashboard(username):
     upcoming = get_future_tasks_for_user(username)
     completed = get_completed_tasks_for_user(username)
 
-    def get_status_color(std_time_str):
-        now = datetime.now()
-        try:
-            std_today = datetime.combine(now.date(), datetime.strptime(std_time_str, "%H:%M").time())
-        except:
-            return "#cccccc"
-        diff = (std_today - now).total_seconds() / 60
-        if diff <= 10:
-            return "#ff5252"
-        elif diff <= 15:
-            return "#ff9800"
-        elif diff <= 25:
-            return "#4caf50"
-        else:
-            return "#cccccc"
+def get_status_color(etd_str, std_str):
+    from datetime import datetime
+
+    now = datetime.now()
+
+    time_str = etd_str if etd_str else std_str
+    if not time_str:
+        return "#cccccc"
+
+    try:
+        task_time = datetime.combine(now.date(), datetime.strptime(time_str, "%H:%M").time())
+    except:
+        return "#cccccc"
+
+    diff = (task_time - now).total_seconds() / 60  # time difference in minutes
+
+    if diff <= 10:
+        return "#ff5252"   # red
+    elif diff <= 15:
+        return "#ff9800"   # orange
+    elif diff <= 25:
+        return "#4caf50"   # green
+    else:
+        return "#cccccc"   # grey
 
     with tabs[0]:
         st.header("🛠️ Your Tasks")
@@ -569,7 +578,7 @@ def user_dashboard(username):
 
         if tasks:
             current = tasks[0]
-            color = get_status_color(current[3])
+            color = get_status_color(current[4], current[3])  # ETD, STD
             st.markdown("### 🟢 **Current Task**")
             with st.container():
                 st.markdown(
@@ -590,7 +599,7 @@ def user_dashboard(username):
 
             if len(tasks) > 1:
                 next_task = tasks[1]
-                color = get_status_color(next_task[3])
+                color = get_status_color(next_task[4], next_task[3])
                 st.markdown("### 🟡 **Next Task**")
                 with st.container():
                     st.markdown(
