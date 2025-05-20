@@ -140,10 +140,173 @@ def verify_pin(pin):
     row = c.fetchone()
     return row[0] if row else None
 
+
+
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
+import time
+import random
+from datetime import datetime, timedelta
+
+# DB Connection
+def get_connection():
+    return sqlite3.connect("flight_tasks.db", check_same_thread=False)
+
+# Ensure 'hooked_up' column exists in 'tasks'
+conn = get_connection()
+conn.execute("""
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY,
+        flight_number TEXT,
+        aircraft_type TEXT,
+        std TEXT,
+        etd TEXT,
+        assigned_to TEXT,
+        complete INTEGER DEFAULT 0,
+        hooked_up INTEGER DEFAULT 0
+    )
+""")
+conn.commit()
+
+# Get active users with shifts
+
+def get_active_users():
+    conn = get_connection()
+    users_df = pd.read_sql_query("SELECT username FROM users WHERE active = 1", conn)
+    return users_df["username"].tolist()
+
+# Get user shift times
+
+def get_user_shifts():
+    conn = get_connection()
+    shift_df = pd.read_sql_query("SELECT * FROM shifts", conn)
+    return shift_df
+
+# Get all pending flight tasks
+
+def get_unassigned_tasks():
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM tasks WHERE assigned_to IS NULL AND complete = 0 AND (hooked_up IS NULL OR hooked_up = 0)", conn)
+    return df
+
+# Get tasks per user
+
+def get_tasks_for_user(username):
+    conn = get_connection()
+    return pd.read_sql_query("SELECT * FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY COALESCE(etd, std)", conn, params=(username,))
+
+# Get datetime from string
+
+def parse_time(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+    except:
+        return None
+
+# Auto assign flight tasks
+
+def auto_allocate_tasks():
+    conn = get_connection()
+    now = datetime.now()
+    active_users = get_active_users()
+    shifts = get_user_shifts()
+    tasks = get_unassigned_tasks()
+
+    for _, task in tasks.iterrows():
+        etd = parse_time(task['etd']) or parse_time(task['std'])
+        if not etd:
+            continue
+
+        best_user = None
+        best_score = -float('inf')
+
+        for username in active_users:
+            shift = shifts[shifts['username'] == username]
+            if shift.empty:
+                continue
+            start = parse_time(shift.iloc[0]['start_time'])
+            end = parse_time(shift.iloc[0]['end_time'])
+
+            if not (start and end):
+                continue
+
+            if etd < start + timedelta(minutes=15) or etd > end - timedelta(minutes=15):
+                continue
+
+            user_tasks = get_tasks_for_user(username)
+
+            last_task_time = now
+            last_type = None
+            for _, ut in user_tasks.iterrows():
+                ut_time = parse_time(ut['etd']) or parse_time(ut['std'])
+                if ut_time and ut_time > last_task_time:
+                    last_task_time = ut_time
+                    last_type = ut['aircraft_type']
+
+            travel_time = (etd - last_task_time).total_seconds() / 60
+            type_penalty = 10 if last_type and last_type != task['aircraft_type'] else 0
+            num_user_tasks = len(user_tasks)
+            score = travel_time - type_penalty - num_user_tasks * 2
+
+            if score == best_score:
+                if random.choice([True, False]):
+                    best_score = score
+                    best_user = username
+            elif score > best_score:
+                best_score = score
+                best_user = username
+
+        if best_user:
+            conn.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (best_user, task['id']))
+            conn.commit()
+
+# Reallocate overdue tasks
+
+def reallocate_overdue():
+    conn = get_connection()
+    active_users = get_active_users()
+    for username in active_users:
+        tasks = get_tasks_for_user(username)
+        if len(tasks) < 2:
+            continue
+
+        current = tasks.iloc[0]
+        next_task = tasks.iloc[1]
+
+        if current['complete'] or current['hooked_up']:
+            continue
+
+        etd = parse_time(current['etd']) or parse_time(current['std'])
+        if not etd:
+            continue
+
+        now = datetime.now()
+        travel_time = (etd - now).total_seconds() / 60
+        if travel_time < 15:
+            conn.execute("UPDATE tasks SET assigned_to = NULL WHERE id = ?", (next_task['id'],))
+            conn.commit()
+
+# Auto refresh loop every 15 seconds
+if 'last_auto_refresh' not in st.session_state:
+    st.session_state['last_auto_refresh'] = time.time()
+if time.time() - st.session_state['last_auto_refresh'] >= 15:
+    auto_allocate_tasks()
+    reallocate_overdue()
+    st.session_state['last_auto_refresh'] = time.time()
+
+# Hooked up button UI
+conn = get_connection()
+cursor = conn.execute("SELECT * FROM tasks WHERE assigned_to IS NOT NULL AND complete = 0")
+for row in cursor.fetchall():
+    task_id = row[0]
+    hooked_up = row[-1]
+    if hooked_up is None or not hooked_up:
+        if st.button("Hooked up to Aircraft", key=f"hooked_{task_id}"):
+            conn.execute("UPDATE tasks SET hooked_up = 1 WHERE id = ?", (task_id,))
+            conn.commit()
+
+conn.close()
 
 # UI Functions
 def admin_dashboard():
