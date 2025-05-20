@@ -5,18 +5,17 @@ from datetime import datetime
 import time
 from io import BytesIO
 from streamlit_autorefresh import st_autorefresh
-import datetime
+
+
+
+
+
 
 
 # ✅ Must be the first Streamlit command
 st.set_page_config(page_title="Flight Task Manager", layout="centered")
 
 
-
-# DB Setup
-conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
-conn.row_factory = sqlite3.Row  # <-- add this line
-c = conn.cursor()
 
 
 if "refresh_key" not in st.session_state:
@@ -59,136 +58,7 @@ def display_flights(flights):
             f"**Flight:** {t[1]} | Aircraft: {t[2]} | Type: {t[3]} | Dest: {t[4]} | STD: {t[5]} | ETD: {t[6]} | Assigned To: {t[7]}"
         )
 
-def get_pending_tasks():
-    c.execute("""
-        SELECT id, flight_number, ac_type, etd, std, assigned_user_id
-        FROM flights
-        WHERE status = 'pending' AND assigned_user_id IS NULL
-        ORDER BY COALESCE(etd, std) ASC
-    """)
-    return c.fetchall()
 
-def get_active_users():
-    c.execute("""
-        SELECT u.id, u.name, s.start AS shift_start, s.finish AS shift_end, u.current_task_id
-        FROM users u
-        JOIN shifts s ON u.name = s.username
-        WHERE u.is_active = 1
-    """)
-    return c.fetchall()
-
-def get_task_by_id(task_id):
-    if not task_id:
-        return None
-    c.execute("""
-        SELECT id, ac_type, etd, std
-        FROM flights
-        WHERE id = ?
-    """, (task_id,))
-    return c.fetchone()
-
-def within_shift(start, end, etd):
-    buffer = datetime.timedelta(minutes=20)
-    return (start - buffer) <= etd <= (end + buffer)
-
-def get_task_time(task):
-    return task['etd'] if task['etd'] else task['std']
-
-def assign_task(task_id, user_id):
-    c.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
-    c.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
-    conn.commit()
-
-def is_task_overdue(task_time, now):
-    return task_time < now
-
-
-def auto_allocate_tasks():
-    now = datetime.now()
-    c = conn.cursor()
-
-    # Get all pending and unassigned tasks
-    c.execute("SELECT * FROM flights WHERE status = 'pending' AND assigned_user_id IS NULL")
-    pending_tasks = c.fetchall()
-    if not pending_tasks:
-        st.write("No pending unassigned tasks.")
-        return
-
-    # Get all active users with shifts
-    c.execute("SELECT u.id, u.name, shift_start, shift_end, u.current_task_id FROM users u JOIN shifts s ON u.name = s.username WHERE u.is_active = 1")
-    users = c.fetchall()
-    if not users:
-        st.write("No active users with shifts.")
-        return
-
-    for task in pending_tasks:
-        task_id = task[0]
-        flight_number = task[1]
-        aircraft = task[2]
-        etd = task[3]
-        std = task[4]
-        task_time_str = etd or std
-
-        if not task_time_str:
-            st.write(f"Skipping task {task_id}: No ETD/STD")
-            continue
-
-        # Convert to datetime
-        try:
-            task_time = datetime.strptime(task_time_str, "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day)
-        except ValueError:
-            st.write(f"Skipping task {task_id}: Invalid time format: {task_time_str}")
-            continue
-
-        best_user = None
-        best_score = float('inf')
-
-        st.write(f"Evaluating task {task_id} @ {task_time.strftime('%H:%M')}")
-
-        for user in users:
-            user_id, username, shift_start, shift_end, current_task_id = user
-
-            # Check shift boundaries (with 20 min buffer)
-            if not within_shift(shift_start, shift_end, task_time):
-                st.write(f"- Skipping {username}: task outside shift bounds.")
-                continue
-
-            score = 0
-
-            # Calculate travel time from user's current task
-            if current_task_id:
-                c.execute("SELECT etd, std, aircraft FROM flights WHERE id = ?", (current_task_id,))
-                last_task = c.fetchone()
-                if last_task:
-                    last_time_str = last_task[0] or last_task[1]
-                    last_aircraft = last_task[2]
-
-                    try:
-                        last_time = datetime.strptime(last_time_str, "%H:%M").replace(
-                            year=now.year, month=now.month, day=now.day)
-                        travel_time = (task_time - last_time).total_seconds() / 60
-                        score -= travel_time  # maximize travel time
-                        if last_aircraft != aircraft:
-                            score += 10  # aircraft switch penalty
-                    except Exception as e:
-                        st.write(f"Error parsing last task time for {username}: {e}")
-                        continue
-
-            if score < best_score:
-                best_score = score
-                best_user = user
-
-        if best_user:
-            user_id = best_user[0]
-            username = best_user[1]
-            st.write(f"✔ Assigning task {task_id} to {username} (score {best_score:.1f})")
-
-            c.execute("UPDATE flights SET assigned_user_id = ? WHERE id = ?", (user_id, task_id))
-            c.execute("UPDATE users SET current_task_id = ? WHERE id = ?", (task_id, user_id))
-            conn.commit()
-        else:
-            st.write(f"No suitable user found for task {task_id}")
 
 # Fixed Users
 STATIC_USERS = {
@@ -218,7 +88,9 @@ STATIC_USERS = {
     "s.brooks": "0028"
 }
 
-
+# DB Setup
+conn = sqlite3.connect('flight_tasks.db', check_same_thread=False)
+c = conn.cursor()
 
 # Ensure tables exist
 c.execute('''
@@ -237,6 +109,13 @@ c.execute('''
     )
 ''')
 
+c.execute('''
+    CREATE TABLE IF NOT EXISTS shifts (
+        username TEXT PRIMARY KEY,
+        start TEXT,
+        finish TEXT
+    )
+''')
 
 c.execute('''
     CREATE TABLE IF NOT EXISTS pins (
@@ -244,36 +123,6 @@ c.execute('''
         pin TEXT
     )
 ''')
-
-
-
-c.execute("""
-    CREATE TABLE IF NOT EXISTS flights (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        flight_number TEXT,
-        ac_type TEXT,
-        etd TEXT,
-        std TEXT,
-        assigned_user_id INTEGER,
-        status TEXT
-    )
-""")
-
-# Create users table (if not exists) to support auto-allocation
-c.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        is_active INTEGER DEFAULT 1,
-        shift_start TEXT,
-        shift_end TEXT,
-        current_task_id INTEGER
-    )
-''')
-conn.commit()
-
-
-
 
 conn.commit()
 
@@ -299,12 +148,9 @@ from datetime import datetime
 # UI Functions
 def admin_dashboard():
 
-    
-
-
     # Auto-refresh every 15 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
-    auto_allocate_tasks()
+
     
     st.title("👨‍✈️ Admin Dashboard")
     tabs = st.tabs(["Users", "Shifts", "Flights", "History"])
@@ -358,7 +204,7 @@ def admin_dashboard():
 
      with st.form("shift_edit_form"):
          for user in STATIC_USERS:
-             row = c.execute("SELECT shift_start, shift_end FROM users WHERE username = ?", (user,)).fetchone()
+             row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
              start_val = row[0] if row else ""
              finish_val = row[1] if row else ""
 
@@ -439,10 +285,6 @@ def admin_dashboard():
                                  INSERT INTO tasks (flight, aircraft, aircraft_type, destination, std, etd)
                                  VALUES (?, ?, ?, ?, ?, ?)
                              ''', (flight, aircraft, aircraft_type, destination, std, etd))
-                             c.execute('''
-                                 INSERT INTO flights (flight_number, ac_type, etd, std, status)
-                                 VALUES (?, ?, ?, ?, 'pending')
-                             ''', (flight, aircraft_type, etd, std))
                              created += 1
  
                      except Exception as e:
@@ -460,10 +302,7 @@ def admin_dashboard():
              st.session_state["task_refresh"] = time.time()
  
          users = list(STATIC_USERS.keys())
-         tasks = c.execute(
-             "SELECT id, flight, aircraft, std, etd FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
-             (username,)
-         ).fetchall()
+         tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
  
          for t in tasks:
              st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
@@ -487,8 +326,6 @@ def admin_dashboard():
          _ = st.session_state.refresh_key
          flights = get_all_flights()
          display_flights(flights)
-
-    
  
     # HISTORY TAB
     with tabs[3]:
@@ -545,30 +382,21 @@ def user_dashboard(username):
     upcoming = get_future_tasks_for_user(username)
     completed = get_completed_tasks_for_user(username)
 
-def get_status_color(etd_str, std_str):
-
-
-    now = datetime.now()
-
-    time_str = etd_str if etd_str else std_str
-    if not time_str:
-        return "#cccccc"
-
-    try:
-        task_time = datetime.combine(now.date(), datetime.strptime(time_str, "%H:%M").time())
-    except:
-        return "#cccccc"
-
-    diff = (task_time - now).total_seconds() / 60  # time difference in minutes
-
-    if diff <= 10:
-        return "#ff5252"   # red
-    elif diff <= 15:
-        return "#ff9800"   # orange
-    elif diff <= 25:
-        return "#4caf50"   # green
-    else:
-        return "#cccccc"   # grey
+    def get_status_color(std_time_str):
+        now = datetime.now()
+        try:
+            std_today = datetime.combine(now.date(), datetime.strptime(std_time_str, "%H:%M").time())
+        except:
+            return "#cccccc"
+        diff = (std_today - now).total_seconds() / 60
+        if diff <= 10:
+            return "#ff5252"
+        elif diff <= 15:
+            return "#ff9800"
+        elif diff <= 25:
+            return "#4caf50"
+        else:
+            return "#cccccc"
 
     with tabs[0]:
         st.header("🛠️ Your Tasks")
@@ -581,7 +409,7 @@ def get_status_color(etd_str, std_str):
 
         if tasks:
             current = tasks[0]
-            color = get_status_color(current[4], current[3])  # ETD, STD
+            color = get_status_color(current[3])
             st.markdown("### 🟢 **Current Task**")
             with st.container():
                 st.markdown(
@@ -602,7 +430,7 @@ def get_status_color(etd_str, std_str):
 
             if len(tasks) > 1:
                 next_task = tasks[1]
-                color = get_status_color(next_task[4], next_task[3])
+                color = get_status_color(next_task[3])
                 st.markdown("### 🟡 **Next Task**")
                 with st.container():
                     st.markdown(
@@ -621,7 +449,7 @@ def get_status_color(etd_str, std_str):
         if len(tasks) > 2:
             with st.expander("📋 View Future Tasks"):
                 for t in tasks[2:]:
-                    col1, col2 = st.columns([5, 1])
+                    col1, col2 = st.columns([4, 1])
                     col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
                     if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
                         completed_at = datetime.now().isoformat()
