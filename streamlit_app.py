@@ -410,6 +410,7 @@ def get_status_color(std_str, etd_str=None):
     else:
         return "#cccccc"  # light grey for future tasks
 
+
 with tabs[0]:
     st.header("🛠️ Your Tasks")
     st.button("🔄 Refresh My Tasks", on_click=refresh_data)
@@ -422,7 +423,7 @@ with tabs[0]:
     if tasks:
         current = tasks[0]
         color = get_status_color(current[3], current[4])
-        st.markdown("### **Current Task**")
+        st.markdown("### 🟢 **Current Task**")
         with st.container():
             st.markdown(
                 f"""
@@ -443,7 +444,7 @@ with tabs[0]:
         if len(tasks) > 1:
             next_task = tasks[1]
             color = get_status_color(next_task[3], next_task[4])
-            st.markdown("### **Next Task**")
+            st.markdown("### 🟡 **Next Task**")
             with st.container():
                 st.markdown(
                     f"""
@@ -485,7 +486,6 @@ with tabs[1]:
             c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
             conn.commit()
             st.rerun()
-
 
 
 # App Entry
