@@ -410,6 +410,7 @@ def get_status_color(std_str, etd_str=None):
     else:
         return "#cccccc"  # light grey for future tasks
 
+tabs = st.tabs(["Tasks", "History"])
 
 with tabs[0]:
     st.header("🛠️ Your Tasks")
