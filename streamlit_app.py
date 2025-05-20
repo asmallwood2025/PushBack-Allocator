@@ -381,7 +381,9 @@ def user_dashboard(username):
 
 
 
-   def get_status_color(std_str, etd_str=None):
+def get_status_color(std_str, etd_str=None):
+    from datetime import datetime
+
     now = datetime.now()
 
     def parse_time(time_str):
