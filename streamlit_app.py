@@ -490,3 +490,78 @@ if "user" in st.session_state:
         admin_dashboard()
     else:
         user_dashboard(st.session_state.user)
+
+
+
+import threading
+
+def auto_allocate_tasks():
+    with conn:
+        now = datetime.now()
+        # Get active users with active shifts
+        cur.execute("SELECT id, name, start_time, end_time FROM users WHERE active = 1")
+        users = cur.fetchall()
+
+        # Get unassigned and incomplete tasks
+        cur.execute("SELECT * FROM flights WHERE assigned_to IS NULL OR complete = 0")
+        tasks = cur.fetchall()
+
+        for task in tasks:
+            task_id = task['id']
+            aircraft_type = task['aircraft']
+            etd = task.get('etd') or task.get('std')
+            task_time = datetime.strptime(etd, "%Y-%m-%d %H:%M:%S")
+
+            # Skip past tasks
+            if task_time < now:
+                continue
+
+            best_user = None
+            best_score = float('-inf')
+
+            for user in users:
+                user_id = user['id']
+                start_time = datetime.strptime(user['start_time'], "%Y-%m-%d %H:%M:%S")
+                end_time = datetime.strptime(user['end_time'], "%Y-%m-%d %H:%M:%S")
+
+                # Skip users outside of 15-minute buffer
+                if task_time < start_time + timedelta(minutes=15) or task_time > end_time - timedelta(minutes=15):
+                    continue
+
+                # Get user's last assigned task
+                cur.execute("SELECT * FROM flights WHERE assigned_to = ? AND complete = 0 ORDER BY (etd IS NULL), etd, std LIMIT 1", (user_id,))
+                last_task = cur.fetchone()
+
+                # Skip if current task is hooked up
+                if last_task and last_task.get("hooked_up"):
+                    continue
+
+                travel_buffer = 0
+                if last_task:
+                    last_time = last_task.get('etd') or last_task.get('std')
+                    last_dt = datetime.strptime(last_time, "%Y-%m-%d %H:%M:%S")
+                    travel_time = (task_time - last_dt).total_seconds() / 60
+                    if last_task.get('aircraft') != aircraft_type:
+                        travel_time -= 10
+                    if travel_time < 15:
+                        continue
+                    travel_buffer = travel_time
+                else:
+                    travel_buffer = 999  # first task
+
+                score = travel_buffer
+                if best_user is None or score > best_score:
+                    best_user = user_id
+                    best_score = score
+
+            if best_user:
+                cur.execute("UPDATE flights SET assigned_to = ? WHERE id = ?", (best_user, task_id))
+        conn.commit()
+
+def auto_allocation_loop():
+    while True:
+        auto_allocate_tasks()
+        time.sleep(15)
+
+# Start the auto-allocation in a background thread
+threading.Thread(target=auto_allocation_loop, daemon=True).start()
