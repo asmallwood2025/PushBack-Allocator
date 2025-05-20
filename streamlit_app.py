@@ -358,7 +358,7 @@ def admin_dashboard():
 
      with st.form("shift_edit_form"):
          for user in STATIC_USERS:
-             row = c.execute("SELECT start, finish FROM shifts WHERE username = ?", (user,)).fetchone()
+             row = c.execute("SELECT start, finish FROM users WHERE username = ?", (user,)).fetchone()
              start_val = row[0] if row else ""
              finish_val = row[1] if row else ""
 
