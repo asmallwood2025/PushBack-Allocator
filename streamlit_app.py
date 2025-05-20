@@ -460,7 +460,10 @@ def admin_dashboard():
              st.session_state["task_refresh"] = time.time()
  
          users = list(STATIC_USERS.keys())
-         tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
+         tasks = c.execute(
+             "SELECT id, flight, aircraft, std, etd FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
+             (username,)
+         ).fetchall()
  
          for t in tasks:
              st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
@@ -543,7 +546,7 @@ def user_dashboard(username):
     completed = get_completed_tasks_for_user(username)
 
 def get_status_color(etd_str, std_str):
-    from datetime import datetime
+
 
     now = datetime.now()
 
