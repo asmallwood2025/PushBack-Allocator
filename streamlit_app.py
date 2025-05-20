@@ -348,7 +348,8 @@ def admin_dashboard():
             st.rerun()
 
 def user_dashboard(username):
-    from datetime import datetime
+
+    tabs = st.tabs(["Tasks", "History"])
 
     # Auto-refresh every 5 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
@@ -410,7 +411,7 @@ def get_status_color(std_str, etd_str=None):
     else:
         return "#cccccc"  # light grey for future tasks
 
-tabs = st.tabs(["Tasks", "History"])
+
 
 with tabs[0]:
     st.header("🛠️ Your Tasks")
