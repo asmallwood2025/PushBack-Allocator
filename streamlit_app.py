@@ -263,7 +263,7 @@ c.execute("""
 c.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
+        username TEXT UNIQUE,
         is_active INTEGER DEFAULT 1,
         shift_start TEXT,
         shift_end TEXT,
