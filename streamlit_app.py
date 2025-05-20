@@ -382,8 +382,6 @@ def user_dashboard(username):
 
 
 def get_status_color(std_str, etd_str=None):
-    from datetime import datetime
-
     now = datetime.now()
 
     def parse_time(time_str):
@@ -412,80 +410,82 @@ def get_status_color(std_str, etd_str=None):
     else:
         return "#cccccc"  # light grey for future tasks
 
-    with tabs[0]:
-        st.header("🛠️ Your Tasks")
-        st.button("🔄 Refresh My Tasks", on_click=refresh_data)
+with tabs[0]:
+    st.header("🛠️ Your Tasks")
+    st.button("🔄 Refresh My Tasks", on_click=refresh_data)
 
-        tasks = c.execute(
-            "SELECT id, flight, aircraft, std FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
-            (username,)
-        ).fetchall()
+    tasks = c.execute(
+        "SELECT id, flight, aircraft, std, etd FROM tasks WHERE assigned_to = ? AND complete = 0 ORDER BY std",
+        (username,)
+    ).fetchall()
 
-        if tasks:
-            current = tasks[0]
-            color = get_status_color(current[3])
-            st.markdown("### 🟢 **Current Task**")
+    if tasks:
+        current = tasks[0]
+        color = get_status_color(current[3], current[4])
+        st.markdown("### **Current Task**")
+        with st.container():
+            st.markdown(
+                f"""
+                <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
+                    <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
+                    <p><strong>Aircraft:</strong> {current[2]}</p>
+                    <p><strong>STD:</strong> {current[3]}</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            if st.button("✅ Complete Current", key=f"complete_{current[0]}"):
+                completed_at = datetime.now().isoformat()
+                c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, current[0]))
+                conn.commit()
+                st.rerun()
+
+        if len(tasks) > 1:
+            next_task = tasks[1]
+            color = get_status_color(next_task[3], next_task[4])
+            st.markdown("### **Next Task**")
             with st.container():
                 st.markdown(
                     f"""
                     <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
-                        <h2 style='margin-bottom: 10px;'>✈️ {current[1]}</h2>
-                        <p><strong>Aircraft:</strong> {current[2]}</p>
-                        <p><strong>STD:</strong> {current[3]}</p>
+                        <h3 style='margin-bottom: 10px;'>✈️ {next_task[1]}</h3>
+                        <p><strong>Aircraft:</strong> {next_task[2]}</p>
+                        <p><strong>STD:</strong> {next_task[3]}</p>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-                if st.button("✅ Complete Current", key=f"complete_{current[0]}"):
+    else:
+        st.info("You currently have no assigned tasks.")
+
+    if len(tasks) > 2:
+        with st.expander("📋 View Future Tasks"):
+            for t in tasks[2:]:
+                col1, col2 = st.columns([4, 1])
+                color = get_status_color(t[3], t[4])
+                col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
+                if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
                     completed_at = datetime.now().isoformat()
-                    c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, current[0]))
+                    c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
                     conn.commit()
                     st.rerun()
 
-            if len(tasks) > 1:
-                next_task = tasks[1]
-                color = get_status_color(next_task[3])
-                st.markdown("### 🟡 **Next Task**")
-                with st.container():
-                    st.markdown(
-                        f"""
-                        <div style='padding: 20px; background-color: {color}; border-radius: 12px; color: white;'>
-                            <h3 style='margin-bottom: 10px;'>✈️ {next_task[1]}</h3>
-                            <p><strong>Aircraft:</strong> {next_task[2]}</p>
-                            <p><strong>STD:</strong> {next_task[3]}</p>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-        else:
-            st.info("You currently have no assigned tasks.")
+with tabs[1]:
+    st.header("📦 Completed Tasks")
+    completed = c.execute(
+        "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
+        (username,)
+    ).fetchall()
 
-        if len(tasks) > 2:
-            with st.expander("📋 View Future Tasks"):
-                for t in tasks[2:]:
-                    col1, col2 = st.columns([4, 1])
-                    col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]}")
-                    if col2.button("Complete", key=f"user_complete_future_{t[0]}"):
-                        completed_at = datetime.now().isoformat()
-                        c.execute("UPDATE tasks SET complete = 1, completed_at = ? WHERE id = ?", (completed_at, t[0]))
-                        conn.commit()
-                        st.rerun()
+    for t in completed:
+        col1, col2 = st.columns([4, 1])
+        date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
+        col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]} | Completed: {date_str}")
+        if col2.button("🔁 Reactivate", key=f"reactivate_{t[0]}"):
+            c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
+            conn.commit()
+            st.rerun()
 
-    with tabs[1]:
-        st.header("📦 Completed Tasks")
-        completed = c.execute(
-            "SELECT id, flight, aircraft, std, completed_at FROM tasks WHERE assigned_to = ? AND complete = 1 ORDER BY completed_at DESC",
-            (username,)
-        ).fetchall()
-
-        for t in completed:
-            col1, col2 = st.columns([4, 1])
-            date_str = pd.to_datetime(t[4]).strftime('%Y-%m-%d %H:%M') if t[4] else 'N/A'
-            col1.markdown(f"**{t[1]}** | Aircraft: {t[2]} | STD: {t[3]} | Completed: {date_str}")
-            if col2.button("🔁 Reactivate", key=f"reactivate_{t[0]}"):
-                c.execute("UPDATE tasks SET complete = 0, completed_at = NULL WHERE id = ?", (t[0],))
-                conn.commit()
-                st.rerun()
 
 
 # App Entry
