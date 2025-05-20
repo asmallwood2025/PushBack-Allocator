@@ -378,21 +378,37 @@ def user_dashboard(username):
     upcoming = get_future_tasks_for_user(username)
     completed = get_completed_tasks_for_user(username)
 
-    def get_status_color(std_time_str):
-        now = datetime.now()
+
+
+
+   def get_status_color(std_str, etd_str=None):
+    now = datetime.now()
+
+    def parse_time(time_str):
         try:
-            std_today = datetime.combine(now.date(), datetime.strptime(std_time_str, "%H:%M").time())
+            return datetime.combine(now.date(), datetime.strptime(time_str, "%H:%M").time())
         except:
-            return "#cccccc"
-        diff = (std_today - now).total_seconds() / 60
-        if diff <= 10:
-            return "#ff5252"
-        elif diff <= 15:
-            return "#ff9800"
-        elif diff <= 25:
-            return "#4caf50"
-        else:
-            return "#cccccc"
+            return None
+
+    # Prefer ETD if valid
+    task_time = parse_time(etd_str) if etd_str else None
+    if not task_time:
+        task_time = parse_time(std_str)
+    if not task_time:
+        return "#cccccc"  # fallback for invalid or missing times
+
+    diff = (task_time - now).total_seconds() / 60  # minutes from now
+
+    if diff < 0:
+        return "#9e9e9e"  # dark grey for past tasks
+    elif diff <= 10:
+        return "#ff5252"  # red
+    elif diff <= 15:
+        return "#ff9800"  # orange
+    elif diff <= 25:
+        return "#4caf50"  # green
+    else:
+        return "#cccccc"  # light grey for future tasks
 
     with tabs[0]:
         st.header("🛠️ Your Tasks")
