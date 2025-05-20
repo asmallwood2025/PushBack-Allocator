@@ -140,15 +140,11 @@ def verify_pin(pin):
     row = c.fetchone()
     return row[0] if row else None
 
-import streamlit as st
-import sqlite3
-import pandas as pd
-from datetime import datetime
 
 # UI Functions
 def admin_dashboard():
 
-    # Auto-refresh every 15 seconds unless user manually triggers
+    # Auto-refresh every 5 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
 
     
@@ -305,7 +301,7 @@ def admin_dashboard():
          tasks = c.execute("SELECT * FROM tasks WHERE complete = 0 ORDER BY std").fetchall()
  
          for t in tasks:
-             st.markdown(f"**{t[1]}** Aircraft: {t[2]} STD: {t[5]}")
+             st.markdown(f"**{t[1]}** Aircraft: {t[2]} Aircraft Type: {t[1]} STD: {t[5]} ETD: {t[6]}")
              cols = st.columns([2, 1, 1])
              assigned = cols[0].selectbox("Assign to", users, key=f"assign_{t[0]}", index=users.index(t[4]) if t[4] in users else 0)
              if cols[1].button("Push Complete", key=f"complete_{t[0]}"):
@@ -354,7 +350,7 @@ def admin_dashboard():
 def user_dashboard(username):
     from datetime import datetime
 
-    # Auto-refresh every 15 seconds unless user manually triggers
+    # Auto-refresh every 5 seconds unless user manually triggers
     st_autorefresh(interval=5 * 1000, key="user_auto_refresh")
 
     # Initialize session state key safely
